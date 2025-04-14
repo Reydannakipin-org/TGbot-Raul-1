@@ -4,6 +4,7 @@ import logging
 from aiogram import Bot, Dispatcher
 
 from config import Config, load_config
+from database.db import create_database
 from middlewares import GroupMemberMiddleware
 from handlers.admin_handlers import admin_router
 from handlers.users_handlers import user_router
@@ -34,6 +35,7 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(user_router)
 
+    await create_database()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

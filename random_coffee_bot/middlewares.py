@@ -4,7 +4,7 @@ from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware
 from aiogram.types import Update
 
-from random_coffee_bot.texts import TEXTS
+from texts import TEXTS
 
 
 logger = logging.getLogger(__name__)

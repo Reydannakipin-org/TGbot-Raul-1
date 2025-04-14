@@ -2,9 +2,20 @@ from datetime import datetime
 
 from sqlalchemy import (BigInteger, Boolean, Column, Integer,
                         DateTime, Date, ForeignKey, String, Text)
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import DeclarativeBase, declared_attr, relationship
 
-from random_coffee_bot.database.db import Base, CommonMixin
+
+class Base(DeclarativeBase):
+    pass
+
+
+class CommonMixin:
+
+    @declared_attr
+    def __tablename__(cls):
+        return cls.__name__.lower()
+
+    id = Column(Integer, primary_key=True)
 
 
 class User(CommonMixin, Base):
@@ -63,5 +74,5 @@ class Feedback(CommonMixin, Base):
 class Setting(CommonMixin, Base):
     """Таблица для изменяемых настроек работы бота."""
 
-    key = Column(String, primary_key=True)
+    key = Column(String, unique=True, nullable=False)
     value = Column(String, nullable=False)

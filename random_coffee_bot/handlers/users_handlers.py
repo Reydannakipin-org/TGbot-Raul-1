@@ -4,7 +4,7 @@ from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
-from random_coffee_bot.texts import TEXTS
+from texts import TEXTS
 
 
 logger = logging.getLogger(__name__)
