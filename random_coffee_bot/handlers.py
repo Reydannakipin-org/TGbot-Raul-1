@@ -1,7 +1,8 @@
 from aiogram import types
 #from aiogram.types import ParseMode
 import sheets
-
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 async def start_handler(message: types.Message):
     await message.answer("Привет! Я бот для генерации пар. Используй команду /generate для генерации пар.")
@@ -21,6 +22,7 @@ async def generate_pairs_handler(message: types.Message):
         await message.answer(f"Генерация пар завершена! Добавлено {len(new_pairs)} новых уникальных пар.")
     else:
         await message.answer("Не удалось создать новых уникальных пар.")
+
 
 
 async def set_schedule_handler(message: types.Message):

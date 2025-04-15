@@ -20,7 +20,7 @@ dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
 # Хранение интервала генерации пар в неделях
-interval_weeks = 2  # По умолчанию раз в 2 недели
+interval_weeks = 1  # По умолчанию раз в 2 недели
 
 # Регистрируем хэндлеры
 dp.message.register(start_handler, Command("start"))
@@ -37,7 +37,6 @@ async def main():
 
     # Планируем регулярную задачу на основе интервала
     scheduler.add_job(run_generation_task, 'interval', minutes=interval_weeks, id='generate_pairs', replace_existing=True)
-
     await dp.start_polling(bot)
 
 async def run_generation_task():
