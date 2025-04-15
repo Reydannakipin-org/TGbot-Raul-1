@@ -17,7 +17,7 @@ class GroupMemberMiddleware(BaseMiddleware):
         event: Update,  # type: ignore
         data: Dict[str, Any]
     ) -> Any:
-        logger.info(f'Вошли в мидлвэер. data = {data['user'].first_name}')
+        logger.info(f'Вошли в мидлвэер. Юзер: {data['event_from_user']}')
         bot = data['bot']
         user = data['event_from_user']
         group_tg_id = data.get('group_tg_id')
