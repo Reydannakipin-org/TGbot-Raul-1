@@ -4,10 +4,10 @@ import logging
 from aiogram import Bot, Dispatcher
 
 from config import Config, load_config
-from database.db import create_database
-from middlewares import GroupMemberMiddleware
+# from database.db import create_database
 from handlers.admin_handlers import admin_router
 from handlers.users_handlers import user_router
+from middlewares import GroupMemberMiddleware
 
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,10 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(user_router)
 
-    await create_database()
+    # Так как БД сейчас настроена через Alembic, эта строчка не нужна.
+    # Но оставим, если понадобиться вручную дропнуть БД и создать новую.
+    # await create_database()
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
