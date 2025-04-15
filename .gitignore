@@ -7,3 +7,7 @@ venv/
 .vscode/
 .history/
 __pycache__/
+
+*.db
+*.sqlite
+*.sqlite3
