@@ -25,5 +25,6 @@ TEXTS = {
     'status_active_true': 'активен',
     'status_active_false': 'неактивен',
     'no_data': 'не указано',
-    'my_data': 'Ваши данные:\nИмя: {first_name}\nФамилия: {last_name}\nСтатус участия: {status}'
+    'my_data': 'Ваши данные:\nИмя: {first_name}\nФамилия: {last_name}\nСтатус участия: {status}',
+    'db_error': 'Ошибка обработки данных. Попробуй позже.'
     }
