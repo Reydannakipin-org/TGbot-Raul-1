@@ -45,6 +45,7 @@ async def process_start_command(message: Message):
                 logger.info('Статус пользователя изменен на Активный.')
             await message.answer(TEXTS['re_start'])
 
+# изменить статус is_active на 1
 @user_router.message(F.text.lower() == "/join")
 async def join_random_coffee(message: Message, session: async_sessionmaker):
     async with session() as s:
@@ -61,6 +62,7 @@ async def join_random_coffee(message: Message, session: async_sessionmaker):
         else:
             await message.answer("Вы ещё не зарегистрированы в системе. Обратитесь к администратору.")
 
+# изменить статус is_active на 0
 @user_router.message(F.text.lower() == "/leave")
 async def leave_random_coffee(message: Message, session: async_sessionmaker):
     async with session() as s:
@@ -76,3 +78,31 @@ async def leave_random_coffee(message: Message, session: async_sessionmaker):
                 await message.answer("❌ Вы исключены из участия в Random Coffee. Возвращайтесь, когда захотите!")
         else:
             await message.answer("Вы ещё не зарегистрированы в системе. Обратитесь к администратору.")
+
+# информация пользователя о себе
+@user_router.message(F.text.lower() == "/me")
+async def user_profile(message: Message, session: async_sessionmaker):
+    async with session() as s:
+        result = await s.execute(select(User).where(User.telegram_id == message.from_user.id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            await message.answer("Вы ещё не зарегистрированы в системе.")
+            return
+
+        # Статус участия
+        status = "✅ Активен" if user.is_active else "❌ Не участвует"
+
+        # Интервал
+        interval = f"{user.pairing_interval} недель" if user.pairing_interval else "не задан"
+
+        # В будущем можно будет тут отобразить имя текущей пары
+
+        await message.answer(
+            f"👤 Ваш профиль:\n"
+            f"🔹 Username: @{user.username if user.username else 'не указан'}\n"
+            f"🔹 Статус: {status}\n"
+            f"🔹 Интервал участия: {interval}\n"
+            f"\n"
+            f"👥 Пара: (в разработке)"
+        )
