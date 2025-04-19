@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
-
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from config import Config, load_config
 # from database.db import create_database
 from handlers.admin_handlers import admin_router
@@ -25,11 +25,17 @@ async def main():
     config: Config = load_config()
     group_tg_id = config.tg_bot.group_tg_id
 
+    engine = create_async_engine(config.db.db_url, echo=False)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+
     bot = Bot(
         token=config.tg_bot.token
     )
     dp = Dispatcher()
-    dp.workflow_data.update({'group_tg_id': group_tg_id})
+    dp.workflow_data.update({
+        'group_tg_id': group_tg_id,
+        'session': session_maker
+    })
 
     dp.update.middleware(GroupMemberMiddleware())
     dp.include_router(admin_router)

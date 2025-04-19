@@ -1,9 +1,10 @@
 import logging
 
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from database.db import AsyncSessionLocal
 from database.models import User
@@ -43,3 +44,35 @@ async def process_start_command(message: Message):
                 await session.commit()
                 logger.info('Статус пользователя изменен на Активный.')
             await message.answer(TEXTS['re_start'])
+
+@user_router.message(F.text.lower() == "/join")
+async def join_random_coffee(message: Message, session: async_sessionmaker):
+    async with session() as s:
+        result = await s.execute(select(User).where(User.telegram_id == message.from_user.id))
+        user = result.scalar_one_or_none()
+
+        if user:
+            if user.is_active:
+                await message.answer("Вы уже участвуете в Random Coffee 😊")
+            else:
+                user.is_active = True
+                await s.commit()
+                await message.answer("✅ Вы добавлены в список участников Random Coffee!")
+        else:
+            await message.answer("Вы ещё не зарегистрированы в системе. Обратитесь к администратору.")
+
+@user_router.message(F.text.lower() == "/leave")
+async def leave_random_coffee(message: Message, session: async_sessionmaker):
+    async with session() as s:
+        result = await s.execute(select(User).where(User.telegram_id == message.from_user.id))
+        user = result.scalar_one_or_none()
+
+        if user:
+            if not user.is_active:
+                await message.answer("Вы уже не участвуете в Random Coffee 😴")
+            else:
+                user.is_active = False
+                await s.commit()
+                await message.answer("❌ Вы исключены из участия в Random Coffee. Возвращайтесь, когда захотите!")
+        else:
+            await message.answer("Вы ещё не зарегистрированы в системе. Обратитесь к администратору.")

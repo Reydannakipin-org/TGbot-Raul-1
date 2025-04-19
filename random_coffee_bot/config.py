@@ -24,7 +24,8 @@ class Config:
 
 def load_config(path: str | None = None) -> Config:
     env: Env = Env()
-    env.read_env(path)
+    # Указываем путь к .env внутри random_coffee_bot
+    env.read_env(path or '.env')  # Тут передаем '.env' по умолчанию, если path не указан
 
     return Config(
         tg_bot=TgBot(

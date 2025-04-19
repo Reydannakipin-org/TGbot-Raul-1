@@ -6,6 +6,11 @@
   <component name="ChangeListManager">
     <list default="true" id="9666058e-16da-4588-b2b3-e30931dfb266" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/alembic.ini" beforeDir="false" afterPath="$PROJECT_DIR$/alembic.ini" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/.env" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/.env" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/main.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -40,9 +45,14 @@
     &quot;Python.main.executor&quot;: &quot;Run&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;draft-branch&quot;
+    &quot;git-widget-placeholder&quot;: &quot;andrey&quot;
   }
 }</component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\a\PycharmProjects\hatacon\random_coffee_bot" />
+    </key>
+  </component>
   <component name="RunManager" selected="Python.main">
     <configuration name="bot" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="hatacon" />
