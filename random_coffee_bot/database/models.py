@@ -89,3 +89,5 @@ class Setting(CommonMixin, Base):
 
     key = Column(String, unique=True, nullable=False)
     value = Column(String, nullable=False)
+    # id = Column(Integer, primary_key=True)
+    # default_pairing_interval = Column(Integer, default=2)

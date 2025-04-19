@@ -2,7 +2,7 @@ from aiogram import Router, F
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from aiogram.types import Message
 from sqlalchemy import select
-from database.models import User
+from database.models import User, Setting
 from datetime import datetime
 admin_router = Router()
 
@@ -113,3 +113,38 @@ async def add_user(message: Message, session: async_sessionmaker):
         await s.commit()
 
         await message.answer(f"✅ Пользователь с ID {user_id_to_add} успешно добавлен.")
+
+# изменение интервала админом
+@admin_router.message(F.text.lower().startswith("/set_interval"))
+async def set_global_interval(message: Message, session: async_sessionmaker):
+    async with session() as s:
+        # Проверка прав
+        result = await s.execute(select(User).where(User.telegram_id == message.from_user.id))
+        admin = result.scalar_one_or_none()
+        if not admin or not admin.is_admin:
+            await message.answer("⛔ У вас нет прав использовать эту команду.")
+            return
+
+        parts = message.text.strip().split()
+        if len(parts) != 2 or not parts[1].isdigit():
+            await message.answer("⚠️ Укажите интервал в неделях. Пример: /set_interval 3")
+            return
+
+        interval = parts[1]
+
+        # Сохраняем или обновляем значение
+        result = await s.execute(select(Setting).where(Setting.key == "global_interval"))
+        setting = result.scalar_one_or_none()
+        if setting:
+            setting.value = interval
+        else:
+            s.add(Setting(key="global_interval", value=interval))
+
+        await s.commit()
+        await message.answer(f"✅ Глобальный интервал установлен: раз в {interval} недель.")
+
+#формирование пар
+# @admin_router.message(F.text.lower().startswith("/form_pairs"))
+# async def form_pairs_cmd(message: Message, session: async_sessionmaker):
+#     async with session() as s:
+#         candidates = await get_users_ready_for_matching(s)

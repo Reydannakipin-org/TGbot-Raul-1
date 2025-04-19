@@ -5,7 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9666058e-16da-4588-b2b3-e30931dfb266" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/alembic/versions/4ea998a4229d_refactor_setting_table_to_use_default_.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/bot.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/database/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/database/models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
