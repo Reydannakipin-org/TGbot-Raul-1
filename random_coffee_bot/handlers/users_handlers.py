@@ -2,7 +2,7 @@ import logging
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -106,3 +106,41 @@ async def user_profile(message: Message, session: async_sessionmaker):
             f"\n"
             f"👥 Пара: (в разработке)"
         )
+
+# кнопки для выбор интервала
+def get_interval_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="1 раз в 2 недели", callback_data="interval_2"),
+            InlineKeyboardButton(text="1 раз в 3 недели", callback_data="interval_3"),
+            InlineKeyboardButton(text="1 раз в 4 недели", callback_data="interval_4"),
+        ]
+    ])
+    return keyboard
+
+# команда для выбора интервала
+@user_router.message(F.text.lower() == "/interval")
+async def change_interval_prompt(message: Message):
+    await message.answer(
+        "Выбери, как часто ты хочешь участвовать в Random Coffee:",
+        reply_markup=get_interval_keyboard()
+    )
+
+# функция для изменения интервала в базе
+@user_router.callback_query(F.data.startswith("interval_"))
+async def set_pairing_interval(callback: CallbackQuery, session: async_sessionmaker):
+    interval_weeks = int(callback.data.split("_")[1])
+    user_id = callback.from_user.id
+
+    async with session() as s:
+        result = await s.execute(select(User).where(User.telegram_id == user_id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            await callback.answer("Вы ещё не зарегистрированы.")
+            return
+
+        user.pairing_interval = interval_weeks
+        await s.commit()
+
+        await callback.answer(f"Теперь ты участвуешь раз в {interval_weeks} недели.", show_alert=True)
