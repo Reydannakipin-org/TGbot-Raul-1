@@ -2,8 +2,10 @@ from aiogram import Router, F
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from aiogram.types import Message
 from sqlalchemy import select
-from database.models import User, Setting
+from database.models import User, Setting, Pair
 from datetime import datetime
+from bot import get_users_ready_for_matching
+from random import shuffle
 admin_router = Router()
 
 # список всех пользователей
@@ -144,7 +146,40 @@ async def set_global_interval(message: Message, session: async_sessionmaker):
         await message.answer(f"✅ Глобальный интервал установлен: раз в {interval} недель.")
 
 #формирование пар
-# @admin_router.message(F.text.lower().startswith("/form_pairs"))
-# async def form_pairs_cmd(message: Message, session: async_sessionmaker):
-#     async with session() as s:
-#         candidates = await get_users_ready_for_matching(s)
+@admin_router.message(F.text.lower().startswith("/form_pairs"))
+async def form_pairs_cmd(message: Message, session: async_sessionmaker):
+    async with session() as s:
+        # Проверяем, админ ли отправитель
+        result = await s.execute(select(User).where(User.telegram_id == message.from_user.id))
+        admin = result.scalar_one_or_none()
+        if not admin or not admin.is_admin:
+            await message.answer("⛔ У вас нет прав использовать эту команду.")
+            return
+
+        # Получаем пользователей, готовых к подбору
+        candidates = await get_users_ready_for_matching(s)
+
+        if len(candidates) < 2:
+            await message.answer("⚠️ Недостаточно пользователей для формирования пар.")
+            return
+
+        # Перемешиваем кандидатов для случайных пар
+        shuffle(candidates)
+
+        # Формируем пары
+        pairs = []
+        for i in range(0, len(candidates) - 1, 2):
+            user1 = candidates[i]
+            user2 = candidates[i + 1]
+            pair = Pair(user1_id=user1.id, user2_id=user2.id)
+            pairs.append(pair)
+
+            # Обновляем дату последней пары у обоих
+            user1.last_paired_at = datetime.utcnow()
+            user2.last_paired_at = datetime.utcnow()
+
+            s.add(pair)
+
+        await s.commit()
+
+        await message.answer(f"✅ Успешно сформировано {len(pairs)} пар.")
