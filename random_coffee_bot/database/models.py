@@ -36,6 +36,19 @@ class User(CommonMixin, Base):
     pause_until = Column(Date, nullable=True)
     joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    pairs_as_user1 = relationship(
+        "Pair",
+        foreign_keys="Pair.user1_id",
+        back_populates="user1"
+    )
+    pairs_as_user2 = relationship(
+        "Pair",
+        foreign_keys="Pair.user2_id",
+        back_populates="user2"
+    )
+
+    feedbacks = relationship("Feedback", back_populates="user")
+
 
 class Pair(CommonMixin, Base):
     """Таблица пар."""
