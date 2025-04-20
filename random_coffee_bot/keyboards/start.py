@@ -13,37 +13,6 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
-participation_active = False
-
-# Определение кнопок
-button_change_my_details = KeyboardButton(text="✏️ Изменить мои данные")
-button_my_status = KeyboardButton(text="📊 Мой статус участия")
-button_edit_meetings = KeyboardButton(text="🗓️ Изменить частоту встреч")
-button_stop_participation = KeyboardButton(text="⏸️ Приостановить участие")
-button_how_it_works = KeyboardButton(text="❓ Как работает Random Coffee?")
-
-
-def get_buttons_kb_user():
-    global participation_active
-
-    # Динамическое изменение текста кнопки "Приостановить участие"
-    if participation_active:
-        button_stop_participation.text = "▶️ Возобновить участие"
-    else:
-        button_stop_participation.text = "⏸️ Приостановить участие"
-
-    buttons_kb_builder_user = ReplyKeyboardBuilder()
-    buttons_kb_builder_user.row(
-        button_change_my_details,
-        button_my_status,
-        button_edit_meetings,
-        button_stop_participation,
-        button_how_it_works,
-        width=1
-    )
-    return buttons_kb_builder_user.as_markup(resize_keyboard=True)
-
-
 async def set_main_menu(dispatcher: Dispatcher):
     main_menu_commands = [
         BotCommand(command="/start", description="Начало работы бота"),
@@ -84,22 +53,6 @@ async def how_answer(message: Message):
     await message.answer(
         text="Тут будет описание того как должен работать этот бот"
     )
-
-
-@dp.message(F.text.in_(["⏸️ Приостановить участие", "▶️ Возобновить участие"]))
-async def toggle_participation(message: Message):
-    global participation_active
-
-    # Меняем состояние участия
-    participation_active = not participation_active
-
-    # Обновляем клавиатуру с новым состоянием кнопки
-    keyboard = get_buttons_kb_user()
-
-    if participation_active:
-        await message.answer("Вы возобновили участие!", reply_markup=keyboard)
-    else:
-        await message.answer("Вы приостановили участие!", reply_markup=keyboard)
 
 dp.startup.register(set_main_menu)
 

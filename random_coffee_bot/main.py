@@ -35,6 +35,10 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(user_router)
 
+    # @dp.message_handler(commands=['admin'])
+    # async def send_admin(message: types.Message):
+    #     await message.answer("Админ панель!", reply_markup=buttons_kb)
+
     await create_database()
     await dp.start_polling(bot)
 
