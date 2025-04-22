@@ -3,13 +3,19 @@ from aiogram.filters import Command
 from aiogram.types import Message, BotCommand
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.types import Message, BotCommand, KeyboardButton
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from admin_buttons import buttons_kb_admin
-from user_buttons import buttons_kb_user
+from keyboards.admin_buttons import buttons_kb_admin
+from keyboards.user_buttons import create_active_user_keyboard, create_inactive_user_keyboard
+from services.user_service import get_user_by_telegram_id
 
-BOT_TOKEN = '7652547374:AAEvVbIl-EkXvzwzdYCdywl2yV1T22JsecM'
+import os
+from dotenv import load_dotenv
 
-bot = Bot(token=BOT_TOKEN)
+load_dotenv()
+
+
+bot = Bot(token=os.getenv("BOT_TOKEN"))
 dp = Dispatcher()
 
 
@@ -32,12 +38,31 @@ async def process_admin(message: Message):
     )
 
 
+# @dp.message(Command("user"))
+# async def process_user(message: Message):
+#     await message.answer(
+#         text='Панель для пользователя',
+#         reply_markup=buttons_kb_user
+#     )
+
+
 @dp.message(Command("user"))
-async def process_user(message: Message):
-    await message.answer(
-        text='Панель для пользователя',
-        reply_markup=buttons_kb_user
-    )
+async def cmd_start(message: Message):
+    telegram_id = message.from_user.id  # Получаем telegram_id пользователя
+    async with AsyncSession() as session:  # Создаем асинхронную сессию
+        user = await get_user_by_telegram_id(session, telegram_id)  # Получаем пользователя
+
+        if user:
+            # Проверяем статус пользователя (предполагаем, что у вас есть поле status)
+            if user.status == 'active':
+                keyboard = create_active_user_keyboard()  # Создаем клавиатуру для активных пользователей
+                await message.answer("Добро пожаловать обратно! Вы активный пользователь.", reply_markup=keyboard)
+            else:
+                keyboard = create_inactive_user_keyboard()  # Создаем клавиатуру для неактивных пользователей
+                await message.answer("Вы неактивны. Пожалуйста, свяжитесь с администратором.", reply_markup=keyboard)
+        else:
+            keyboard = create_inactive_user_keyboard()  # Можно также показать неактивную клавиатуру для незарегистрированных пользователей
+            await message.answer("Привет! Вы не зарегистрированы в системе.", reply_markup=keyboard)
 
 
 @dp.message(Command("info"))
