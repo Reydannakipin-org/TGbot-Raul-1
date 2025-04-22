@@ -56,18 +56,21 @@ class Pair(CommonMixin, Base):
     user1_id = Column(Integer, ForeignKey('user.id'), nullable=False)
     user2_id = Column(Integer, ForeignKey('user.id'), nullable=False)
 
+    user1_username = Column(String, nullable=False)
+    user2_username = Column(String, nullable=False)
+
     paired_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user1 = relationship(
         "User", foreign_keys=[user1_id], back_populates="pairs_as_user1"
-        )
+    )
     user2 = relationship(
         "User", foreign_keys=[user2_id], back_populates="pairs_as_user2"
-        )
+    )
 
     feedbacks = relationship(
         "Feedback", back_populates="pair", cascade="all, delete"
-        )
+    )
 
 
 class Feedback(CommonMixin, Base):

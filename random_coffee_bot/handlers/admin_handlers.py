@@ -171,7 +171,13 @@ async def form_pairs_cmd(message: Message, session: async_sessionmaker):
         for i in range(0, len(candidates) - 1, 2):
             user1 = candidates[i]
             user2 = candidates[i + 1]
-            pair = Pair(user1_id=user1.id, user2_id=user2.id)
+            pair = Pair(
+                user1_id=user1.id,
+                user2_id=user2.id,
+                user1_username=user1.username,
+                user2_username=user2.username,
+                paired_at=datetime.utcnow()
+            )
             pairs.append(pair)
 
             # Обновляем дату последней пары у обоих

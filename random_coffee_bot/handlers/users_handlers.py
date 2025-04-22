@@ -3,11 +3,11 @@ import logging
 from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from sqlalchemy import select
+from sqlalchemy import select, or_, desc
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from database.db import AsyncSessionLocal
-from database.models import User
+from database.models import User, Pair
 from texts import TEXTS
 
 
@@ -94,9 +94,25 @@ async def user_profile(message: Message, session: async_sessionmaker):
         status = "✅ Активен" if user.is_active else "❌ Не участвует"
 
         # Интервал
-        interval = f"{user.pairing_interval} недель" if user.pairing_interval else "не задан"
+        interval = f"{user.pairing_interval} дней" if user.pairing_interval else "не задан"
 
-        # В будущем можно будет тут отобразить имя текущей пары
+        # Поиск последней пары
+        pair_result = await s.execute(
+            select(Pair)
+            .where(or_(Pair.user1_id == user.id, Pair.user2_id == user.id))
+            .order_by(desc(Pair.paired_at))
+            .limit(1)
+        )
+        last_pair = pair_result.scalar_one_or_none()
+
+        if last_pair:
+            if last_pair.user1_id == user.id:
+                partner_username = last_pair.user2_username
+            else:
+                partner_username = last_pair.user1_username
+            pair_info = f"@{partner_username}"
+        else:
+            pair_info = "нет данных"
 
         await message.answer(
             f"👤 Ваш профиль:\n"
@@ -104,7 +120,7 @@ async def user_profile(message: Message, session: async_sessionmaker):
             f"🔹 Статус: {status}\n"
             f"🔹 Интервал участия: {interval}\n"
             f"\n"
-            f"👥 Пара: (в разработке)"
+            f"👥 Последняя пара: {pair_info}"
         )
 
 # кнопки для выбор интервала
