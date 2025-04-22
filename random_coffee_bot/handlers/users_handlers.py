@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from database.db import AsyncSessionLocal
 from texts import TEXTS
-from services.user_service import (create_user,
+from random_coffee_bot.services.user_service import (create_user,
                                    delete_user,
                                    get_user_by_telegram_id,
                                    set_user_active,
