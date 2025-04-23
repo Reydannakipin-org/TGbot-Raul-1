@@ -1,10 +1,10 @@
 import asyncio
 import logging
-
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from bot import setup_scheduler
 from aiogram import Bot, Dispatcher
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from config import Config, load_config
-# from database.db import create_database
 from handlers.admin_handlers import admin_router
 from handlers.users_handlers import user_router
 from middlewares import GroupMemberMiddleware
@@ -40,10 +40,8 @@ async def main():
     dp.update.middleware(GroupMemberMiddleware())
     dp.include_router(admin_router)
     dp.include_router(user_router)
+    setup_scheduler(session_maker, bot)
 
-    # Так как БД сейчас настроена через Alembic, эта строчка не нужна.
-    # Но оставим, если понадобиться вручную дропнуть БД и создать новую.
-    # await create_database()
 
     await dp.start_polling(bot)
 

@@ -33,6 +33,7 @@ class User(CommonMixin, Base):
 
     pairing_interval = Column(Integer, nullable=True)  # индивидуальный интервал (в днях)
     last_paired_at = Column(Date, nullable=True)
+    future_meeting = Column(Integer, default=0)
     pause_until = Column(Date, nullable=True)
     joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -55,9 +56,11 @@ class Pair(CommonMixin, Base):
 
     user1_id = Column(Integer, ForeignKey('user.id'), nullable=False)
     user2_id = Column(Integer, ForeignKey('user.id'), nullable=False)
+    user3_id = Column(Integer, ForeignKey('user.id'), nullable=True)
 
     user1_username = Column(String, nullable=False)
     user2_username = Column(String, nullable=False)
+    user3_username = Column(String, nullable=True)
 
     paired_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -87,10 +90,12 @@ class Feedback(CommonMixin, Base):
     user = relationship("User", back_populates="feedbacks")
 
 
-class Setting(CommonMixin, Base):
+class Setting(Base):
     """Таблица для изменяемых настроек работы бота."""
+    __tablename__ = 'settings'
 
-    key = Column(String, unique=True, nullable=False)
-    value = Column(String, nullable=False)
-    # id = Column(Integer, primary_key=True)
-    # default_pairing_interval = Column(Integer, default=2)
+    id = Column(Integer, primary_key=True)
+    key = Column(String, unique=True, nullable=False, default="global_interval")
+    value = Column(Integer, nullable=False, default=2)
+    first_matching_date = Column(DateTime, default=datetime(2025, 4, 1, 0, 0))
+

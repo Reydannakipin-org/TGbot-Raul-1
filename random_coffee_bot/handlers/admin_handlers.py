@@ -156,17 +156,15 @@ async def form_pairs_cmd(message: Message, session: async_sessionmaker):
             await message.answer("⛔ У вас нет прав использовать эту команду.")
             return
 
-        # Получаем пользователей, готовых к подбору
+        # Получаем кандидатов для формирования пар
         candidates = await get_users_ready_for_matching(s)
 
         if len(candidates) < 2:
             await message.answer("⚠️ Недостаточно пользователей для формирования пар.")
             return
 
-        # Перемешиваем кандидатов для случайных пар
-        shuffle(candidates)
+        shuffle(candidates)  # Перемешиваем пользователей
 
-        # Формируем пары
         pairs = []
         for i in range(0, len(candidates) - 1, 2):
             user1 = candidates[i]
@@ -174,18 +172,60 @@ async def form_pairs_cmd(message: Message, session: async_sessionmaker):
             pair = Pair(
                 user1_id=user1.id,
                 user2_id=user2.id,
-                user1_username=user1.username,
-                user2_username=user2.username,
+                user1_username=user1.username,  # Убедитесь, что username доступен
+                user2_username=user2.username,  # Убедитесь, что username доступен
                 paired_at=datetime.utcnow()
             )
-            pairs.append(pair)
-
-            # Обновляем дату последней пары у обоих
             user1.last_paired_at = datetime.utcnow()
             user2.last_paired_at = datetime.utcnow()
-
             s.add(pair)
+            pairs.append(pair)
+
+        # Если остался 1 человек — добавим его к последней паре
+        if len(candidates) % 2 == 1 and pairs:
+            odd_user = candidates[-1]
+            last_pair = pairs[-1]
+
+            # Обновляем последние пару, добавляем user3
+            last_pair.user3_id = odd_user.id
+            last_pair.user3_username = odd_user.username
+            odd_user.last_paired_at = datetime.utcnow()
+
+            msg = f"👤 Пользователь без пары добавлен к последней паре: {odd_user.username or odd_user.id}"
+            print(msg)
+            await message.answer(msg)
 
         await s.commit()
-
         await message.answer(f"✅ Успешно сформировано {len(pairs)} пар.")
+
+@admin_router.message(F.text.lower().startswith("/next_meeting"))
+async def next_meeting_handler(message: Message, session: async_sessionmaker):
+    async with session() as s:
+        result = await s.execute(select(Setting).where(Setting.key == 'global_interval'))
+        setting = result.scalar_one_or_none()
+        global_interval_weeks = int(setting.value) if setting else 3
+        global_interval_days = global_interval_weeks * 7
+
+        result = await s.execute(select(Setting).where(Setting.key == 'first_matching_date'))
+        first_date_setting = result.scalar_one_or_none()
+
+        if not first_date_setting:
+            await message.answer("⚠️ Дата первого матчмейкинга не установлена.")
+            return
+
+        first_matching_date = datetime.strptime(first_date_setting.value, "%Y-%m-%d").date()
+        today = datetime.utcnow().date()
+
+        days_passed = (today - first_matching_date).days
+        cycles_passed = days_passed // global_interval_days
+        next_meeting_date = first_matching_date + timedelta(days=(cycles_passed + 1) * global_interval_days)
+
+        # Время автоматического запуска
+        next_auto_run = datetime.combine(next_meeting_date, datetime.min.time()).replace(hour=10)
+        next_auto_str = next_auto_run.strftime('%d.%m.%Y %H:%M')
+
+        await message.answer(
+            f"📅 Следующая встреча запланирована на: <b>{next_meeting_date.strftime('%d.%m.%Y')}</b>\n"
+            f"🕙 Автоматическое формирование пар произойдёт: <b>{next_auto_str} (UTC)</b>",
+            parse_mode="HTML"
+        )
