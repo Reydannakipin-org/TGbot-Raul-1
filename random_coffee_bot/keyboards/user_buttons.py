@@ -1,8 +1,7 @@
 from aiogram.types import KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from ..texts import TEXTS
 
-button_change_my_details = KeyboardButton(text=TEXTS['change_my_details'])
+button_change_my_details = KeyboardButton(text="✏️ Изменить мои данные")
 button_my_status = KeyboardButton(text="📊 Мой статус участия")
 button_edit_meetings = KeyboardButton(text="🗓️ Изменить частоту встреч")
 button_stop_participation = KeyboardButton(text="⏸️ Приостановить участие")
