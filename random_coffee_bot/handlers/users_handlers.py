@@ -15,6 +15,7 @@ from random_coffee_bot.services.user_service import (create_user,
                                    set_user_active,
                                    update_user_field)
 from states.user_states import FSMUserForm
+from keyboards.user_buttons import create_active_user_keyboard
 
 
 logger = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ async def process_last_name_sending(message: Message, state: FSMContext):
 
             logger.info('Фамилия сохранена')
 
-        await message.answer(TEXTS['thanks_for_answers'])
+        await message.answer(TEXTS['thanks_for_answers'], reply_markup=create_active_user_keyboard)
         await state.clear()
     except SQLAlchemyError:
         logger.exception('Ошибка при сохранении фамилии')
