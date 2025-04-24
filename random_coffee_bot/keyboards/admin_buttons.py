@@ -4,7 +4,9 @@ from aiogram.types import (InlineKeyboardButton,
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 
-from texts import INLINE_BUTTON_TEXTS, KEYBOARD_BUTTON_TEXTS
+from texts import (INLINE_BUTTON_TEXTS,
+                   INTERVAL_TEXTS,
+                   KEYBOARD_BUTTON_TEXTS)
 
 
 button_list_participants = KeyboardButton(
@@ -32,18 +34,34 @@ buttons_kb_admin = buttons_kb_builder_admin.as_markup(
 )
 
 
-def generate_ikb_participant_management(user_telegram_id: int):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text=INLINE_BUTTON_TEXTS['set_has_permission_false'],
-                callback_data=f'set_has_permission_false:{user_telegram_id}'
-            )
-        ]
-    ])
+def generate_inline_manage(user_telegram_id: int,
+                           has_permission: bool):
+    if has_permission:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                    text=INLINE_BUTTON_TEXTS['set_has_permission_false'],
+                    callback_data=f'set_has_permission_false:{user_telegram_id}')],
+            [InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['set_pause'],
+                callback_data=f'set_pause:{user_telegram_id}')],
+            [InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['cancel'],
+                callback_data=f'cancel:{user_telegram_id}')]
+        ])
+    else:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['set_has_permission_true'],
+                callback_data=f'set_has_permission_true:{user_telegram_id}'
+                )],
+            [InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['cancel'],
+                callback_data=f'cancel:{user_telegram_id}'
+                )]
+        ])
 
 
-def generate_ikb_confirm_set_has_permission_false(user_telegram_id: int):
+def generate_inline_confirm_permission_false(user_telegram_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -55,6 +73,61 @@ def generate_ikb_confirm_set_has_permission_false(user_telegram_id: int):
                 text=INLINE_BUTTON_TEXTS['no'],
                 callback_data=(
                     f'return_to_find_user_by_telegram_id:{user_telegram_id}')
+            )
+        ]
+    ])
+
+
+def generate_inline_confirm_permission_true(user_telegram_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['yes'],
+                callback_data=(
+                    f'confirm_set_has_permission_true:{user_telegram_id}')
+            ),
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['no'],
+                callback_data=(
+                    f'return_to_find_user_by_telegram_id:{user_telegram_id}')
+            )
+        ]
+    ])
+
+
+def generate_inline_confirm_change_interval():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['yes'],
+                callback_data=('confirm_changing_interval')
+            ),
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['no'],
+                callback_data=('cancel_changing_interval')
+            )
+        ]
+    ])
+
+
+def generate_inline_interval_options():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=INTERVAL_TEXTS['2'],
+                callback_data=('new_interval:2')
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=INTERVAL_TEXTS['3'],
+                callback_data=('new_interval:3')
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=INTERVAL_TEXTS['4'],
+                callback_data=('new_interval:4')
             )
         ]
     ])

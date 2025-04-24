@@ -1,14 +1,33 @@
+from datetime import datetime, date
 import logging
 
 from aiogram import F, Router
-from aiogram.filters import CommandStart, StateFilter
+from aiogram.filters import Command, CommandStart, StateFilter
+from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
+from sqlalchemy.exc import SQLAlchemyError
 
+from database.db import AsyncSessionLocal
 from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
-from keyboards.admin_buttons import buttons_kb_admin
-from texts import ADMIN_TEXTS
-
+from keyboards.admin_buttons import (buttons_kb_admin,
+                                     generate_inline_manage,
+                                     generate_inline_confirm_change_interval,
+                                     generate_inline_confirm_permission_false,
+                                     generate_inline_confirm_permission_true,
+                                     generate_inline_interval_options)
+from services.admin_service import (create_text_about_user,
+                                    create_text_with_interval,
+                                    create_text_with_full_name,
+                                    create_text_with_full_name_date,
+                                    is_valid_date,
+                                    parse_callback_data,
+                                    set_new_global_interval,
+                                    set_user_permission,
+                                    set_user_puase_until)
+from services.user_service import get_user_by_telegram_id
+from states.admin_states import FSMAdminPanel
+from texts import ADMIN_TEXTS, INTERVAL_TEXTS, KEYBOARD_BUTTON_TEXTS
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +39,449 @@ admin_router.callback_query.filter(AdminCallbackFilter())
 @admin_router.message(CommandStart(), StateFilter(default_state))
 async def process_start_command(message: Message):
     '''
-    Хэндлер для команды /start админа.
+    Хэндлер для команды /start админа. Отправляет клавиатуру.
     '''
     logger.info('Вошли в хэндлер, обрабатывающий команду /start')
     await message.answer(ADMIN_TEXTS['admin_welcome'],
                          reply_markup=buttons_kb_admin)
 
 
-@admin_router.message(F.text, StateFilter(default_state))
+@admin_router.message(
+        F.text == KEYBOARD_BUTTON_TEXTS['button_participant_management'],
+        StateFilter(default_state))
+async def process_participant_management(message: Message, state: FSMContext):
+    '''
+    Хэндлер срабатывает при нажатии на кнопку клавиатуры "Управление
+    участниками". Запрашивает у админа Telegram ID юзера, для которого
+    хочет внести изменения. Переводит в состояние ожидания ввода ID.
+    '''
+    await message.answer(ADMIN_TEXTS['ask_user_telegram_id'])
+    await state.set_state(FSMAdminPanel.waiting_for_telegram_id)
+
+
+@admin_router.message(StateFilter(FSMAdminPanel.waiting_for_telegram_id),
+                      F.text.regexp(r'^\d+$'))
+async def process_find_user_by_telegram_id(message: Message,
+                                           state: FSMContext):
+    '''
+    Хэндлер срабатывает в состоянии, когда мы получаем от админа цифры в
+    качестве telegram ID. Если в БД есть юзер с таким ID, отправляем инфо
+    о нем админу вместе с инлайн-клавиатурой для управления юзером.
+    Если такого юзера нет, просим отправить новый ID.
+    '''
+    user_telegram_id = int(message.text)  # type: ignore
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await message.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
+            else:
+                logger.info('Пользователь найден.')
+                data_text = create_text_about_user(user)
+                ikb_participant_management = generate_inline_manage(
+                    user_telegram_id, user.has_permission)
+                await message.answer(data_text,
+                                     reply_markup=ikb_participant_management)
+                await state.clear()
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.message(StateFilter(FSMAdminPanel.waiting_for_telegram_id),
+                      Command(commands='cancel'))
+async def process_cancel(message: Message, state: FSMContext):
+    '''
+    Хэндлер срабатывает в состоянии, когда мы ждем от админа цифры в качестве
+    telegram ID, но он отправляет команду /cancel.
+    '''
+    logger.info('Админ отменил поиск юзера.')
+    await state.clear()
+    await message.answer(ADMIN_TEXTS['cancel_finding_user'])
+
+
+@admin_router.message(StateFilter(FSMAdminPanel.waiting_for_telegram_id),
+                      ~F.text.regexp(r'^\d+$'))
+async def process_warning_not_numbers(message: Message, state: FSMContext):
+    '''
+    Хэндлер срабатывает в состоянии, когда мы ждем от админа цифры в качестве
+    telegram ID, но получаем не цифры. Просим админа ввести заново.
+    '''
+    logger.info('Админ прислал в качестве телеграм ID не цифры.')
+    await message.answer(ADMIN_TEXTS['warning_not_numbers'])
+
+
+@admin_router.callback_query(lambda c: c.data.startswith('cancel:'),
+                             StateFilter(default_state))
+async def process_inline_cancel(callback: CallbackQuery):
+    '''
+    Хэндлер срабатывает на нажатие админом инлайн-кнопки "Отменить"
+    изменения конкретного юзера.
+    '''
+    _, user_telegram_id = parse_callback_data(callback.data)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await callback.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
+            else:
+                data_text = create_text_with_full_name(
+                    ADMIN_TEXTS['cancel_user_managing'], user
+                )
+                if isinstance(callback.message, Message):
+                    await callback.message.edit_text(text=data_text)
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.callback_query(
+        lambda c: c.data.startswith('set_has_permission_false:'),
+        StateFilter(default_state))
+async def process_set_has_permission_false(callback: CallbackQuery):
+    '''
+    Хэндлер срабатывает на нажатие админом инлайн-кнопки "Запретить
+    пользоваться ботом" конкретному юзеру и заменяет предыдущее сообщение
+    на новое с инлайн-кнопками для подтверждения действия.
+    '''
+    _, user_telegram_id = parse_callback_data(callback.data)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await callback.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
+            else:
+                data_text = create_text_with_full_name(
+                    ADMIN_TEXTS['confirm_set_has_permission_false'], user
+                )
+                if isinstance(callback.message, Message):
+                    await callback.message.edit_text(
+                        text=data_text,
+                        reply_markup=generate_inline_confirm_permission_false(
+                            user_telegram_id)
+                    )
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.callback_query(
+        lambda c: c.data.startswith('confirm_set_has_permission_false:'),
+        StateFilter(default_state))
+async def process_confirm_set_has_permission_false(callback: CallbackQuery):
+    '''
+    Хэндлер срабатывает, если админ нажимает инлайн-кнопку "да" для
+    подтверждения запретить юзеру пользоваться ботом. Отправляет
+    сообщение с подтверждением действия.
+    '''
+    _, user_telegram_id = parse_callback_data(callback.data)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await callback.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
+            else:
+                await set_user_permission(session, user_telegram_id, False)
+                logger.info('У юзера больше нет разрешения использовать бота.')
+                data_text = create_text_with_full_name(
+                    ADMIN_TEXTS['success_set_has_permission_false'], user
+                )
+                if isinstance(callback.message, Message):
+                    await callback.message.edit_text(text=data_text)
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.callback_query(
+        lambda c: c.data.startswith('return_to_find_user_by_telegram_id:'),
+        StateFilter(default_state))
+async def process_find_user_by_telegram_id_cb(callback: CallbackQuery):
+    '''
+    Хэндлер срабатывает, если админ на просьбу подтвердить какие-то изменения
+    для юзера нажимает "нет". Возвращает админа к сообщению с
+    данными юзера и инлайн-кнопками для управления им.
+    '''
+    _, user_telegram_id = parse_callback_data(callback.data)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await callback.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
+            else:
+                logger.info('Возвращаем админа к сообщению с инфо о юзере.')
+                data_text = create_text_about_user(user)
+                ikb_participant_management = generate_inline_manage(
+                    user_telegram_id, user.has_permission)
+                if isinstance(callback.message, Message):
+                    await callback.message.edit_text(
+                        text=data_text,
+                        reply_markup=ikb_participant_management)
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.callback_query(
+        lambda c: c.data.startswith('set_has_permission_true:'),
+        StateFilter(default_state))
+async def process_set_has_permission_true(callback: CallbackQuery):
+    '''
+    Хэндлер срабатывает на нажатие админом инлайн-кнопки "Разрешить
+    пользоваться ботом" конкретному юзеру и заменяет предыдущее сообщение
+    на новое с инлайн-кнопками для подтверждения действия.
+    '''
+    _, user_telegram_id = parse_callback_data(callback.data)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await callback.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
+            else:
+                data_text = create_text_with_full_name(
+                    ADMIN_TEXTS['confirm_set_has_permission_true'], user
+                )
+                if isinstance(callback.message, Message):
+                    await callback.message.edit_text(
+                        text=data_text,
+                        reply_markup=generate_inline_confirm_permission_true(
+                            user_telegram_id)
+                    )
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.callback_query(
+        lambda c: c.data.startswith('confirm_set_has_permission_true:'),
+        StateFilter(default_state))
+async def process_confirm_set_has_permission_true(callback: CallbackQuery):
+    '''
+    Хэндлер срабатывает, если админ нажимает инлайн-кнопку "да" для
+    подтверждения разрешить юзеру пользоваться ботом. Отправляет
+    сообщение с подтверждением действия.
+    '''
+    _, user_telegram_id = parse_callback_data(callback.data)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await callback.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
+            else:
+                await set_user_permission(session, user_telegram_id, True)
+                logger.info('У юзера снова есть разрешение использовать бота.')
+                data_text = create_text_with_full_name(
+                    ADMIN_TEXTS['success_set_has_permission_true'], user
+                )
+                if isinstance(callback.message, Message):
+                    await callback.message.edit_text(text=data_text)
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.callback_query(
+        lambda c: c.data.startswith('set_pause:'),
+        StateFilter(default_state))
+async def process_set_pause(callback: CallbackQuery, state: FSMContext):
+    '''
+    Хэндлер срабатывает на нажатие админом инлайн-кнопки "Поставить на паузу"
+    конкретного юзера и заменяет предыдущее сообщение
+    на новое с просьюой отправить дату.
+    Устанавливает состояние: ожидание ввода даты.
+    '''
+    _, user_telegram_id = parse_callback_data(callback.data)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await callback.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
+            else:
+                data_text = create_text_with_full_name(
+                    ADMIN_TEXTS['ask_date_for_pause'], user
+                )
+                if isinstance(callback.message, Message):
+                    await callback.message.edit_text(
+                        text=data_text)
+                await state.set_state(FSMAdminPanel.waiting_for_end_pause_date)
+                await state.update_data(user_telegram_id=user_telegram_id)
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.message(StateFilter(FSMAdminPanel.waiting_for_end_pause_date),
+                      Command(commands='cancel'))
+async def process_cancel_setting_pause(message: Message, state: FSMContext):
+    '''
+    Хэндлер срабатывает в состоянии, когда мы ждем от админа цифры в качестве
+    telegram ID, но он отправляет команду /cancel.
+    '''
+    logger.info('Админ отменил установку паузы для юзера.')
+    await state.clear()
+    await message.answer(ADMIN_TEXTS['cancel_setting_user_pause'])
+
+
+@admin_router.message(StateFilter(FSMAdminPanel.waiting_for_end_pause_date),
+                      F.text.func(lambda t: bool(t and is_valid_date(t))))
+async def process_check_date_for_pause(message: Message, state: FSMContext):
+    '''
+    Хэндлер срабатывает в состоянии, когда мы ждем от админа дату , до
+    которой юзера нужно поставить на паузу,
+    и админ присылает дату в верном формате.
+    '''
+    parsed_date = datetime.strptime(message.text, "%d.%m.%Y").date()  # type: ignore
+
+    today = date.today()
+    if parsed_date < today:
+        await message.answer(ADMIN_TEXTS['past_date_for_pause'])
+        return
+
+    user_telegram_id = await state.get_value('user_telegram_id')
+    logger.info(f'Получен id {user_telegram_id} из данных состояния.')
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await message.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
+            else:
+                await set_user_puase_until(session, user_telegram_id,
+                                           parsed_date)
+                data_text = create_text_with_full_name_date(
+                    ADMIN_TEXTS['success_set_pause_untill'], user)
+                await message.answer(data_text)
+                await state.clear()
+                logger.info('Пользователю установлена дата окончания паузы.')
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.message(StateFilter(FSMAdminPanel.waiting_for_end_pause_date))
+async def process_wrong_date_for_pause(message: Message, state: FSMContext):
+    '''
+    Хэндлер срабатывает в состоянии, когда мы ждем от админа дату , до
+    которой юзера нужно поставить на паузу, но получаем некорректные данные.
+    '''
+    logger.info('Получены неверные данные в качестве даты.')
+    await message.answer(ADMIN_TEXTS['wrong_date_for_pause'])
+
+
+@admin_router.message(
+        F.text == KEYBOARD_BUTTON_TEXTS['button_change_interval'],
+        StateFilter(default_state))
+async def process_button_change_interval(message: Message):
+    '''
+    Хэндлер срабатывает при нажатии на кнопку клавиатуры "Изменить интервал".
+    Отправляет сообщение с инлайн-кнопками для подтверждения действия.
+    '''
+    try:
+        async with AsyncSessionLocal() as session:
+
+            data_text = await create_text_with_interval(
+                session, ADMIN_TEXTS['confirm_changing_interval'])
+
+            await message.answer(
+                text=data_text,
+                reply_markup=generate_inline_confirm_change_interval())
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+
+
+
+@admin_router.callback_query(F.data == 'confirm_changing_interval',
+                             StateFilter(default_state))
+async def process_choose_new_interval(callback: CallbackQuery):
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            text=ADMIN_TEXTS['choose_interval'],
+            reply_markup=generate_inline_interval_options()
+        )
+
+
+@admin_router.callback_query(
+        lambda c: c.data.startswith('new_interval:'),
+        StateFilter(default_state))
+async def process_set_new_interval(callback: CallbackQuery):
+    '''
+    Хэндлер срабатывает на нажатие админом инлайн-кнопки 
+    '''
+    _, new_interval = parse_callback_data(callback.data)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            await set_new_global_interval(session, new_interval)
+
+            data_text = await create_text_with_interval(
+                session, ADMIN_TEXTS['success_new_interval'])
+
+            if isinstance(callback.message, Message):
+                await callback.message.edit_text(text=data_text)
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.callback_query(F.data == 'cancel_changing_interval',
+                             StateFilter(default_state))
+async def process_cancel_changing_interval(callback: CallbackQuery):
+    try:
+        async with AsyncSessionLocal() as session:
+
+            data_text = await create_text_with_interval(
+                session, ADMIN_TEXTS['cancel_changing_interval'])
+
+            if isinstance(callback.message, Message):
+                await callback.message.edit_text(text=data_text)
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.message(F.text)
 async def fallback_handler(message: Message):
-    await message.answer(ADMIN_TEXTS['admin_unknown_command'])
+    '''
+    Хэндлер срабатывает, когда админ отправляет неизвестную команду или текст.
+    '''
+    await message.answer(ADMIN_TEXTS['admin_unknown_command'],
+                         reply_markup=buttons_kb_admin)
