@@ -6,12 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="9666058e-16da-4588-b2b3-e30931dfb266" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/alembic/versions/05a90864a2c1_initial_migration.py" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/random_coffee_bot/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/bot.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/random_coffee_bot/database/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/database/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/random_coffee_bot/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/random_coffee_bot/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

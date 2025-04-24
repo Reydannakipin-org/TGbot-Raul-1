@@ -12,25 +12,36 @@ scheduler = AsyncIOScheduler()
 
 async def get_users_ready_for_matching(session: AsyncSession) -> list[User]:
     """Выбираем пользователей для участия в формировании пар по правилам."""
+
     result = await session.execute(select(Setting).filter_by(key='global_interval'))
     setting = result.scalars().first()
     global_interval = setting.value if setting else 2
 
-    result = await session.execute(select(User).where(User.is_active == True))
+    result = await session.execute(select(User))
     users = result.scalars().all()
     selected_users = []
+    today = datetime.utcnow().date()
 
     for user in users:
+        # Пропускаем, если пользователь в паузе
+        if user.pause_until and user.pause_until > today:
+            continue
+
         user_interval = user.pairing_interval or global_interval
 
+        # Пропускаем неактивных, но обновляем future_meeting при необходимости
+        if not user.is_active:
+            if user_interval > global_interval and user.future_meeting == 0:
+                user.future_meeting = 1
+            continue  # Не добавляем неактивных в пары вообще
+
+        # Основная логика для активных пользователей
         if global_interval >= user_interval:
             user.future_meeting = 0
             selected_users.append(user)
-
         elif user.future_meeting == 1:
             user.future_meeting = 0
             selected_users.append(user)
-
         else:
             user.future_meeting = 1
 
