@@ -74,6 +74,26 @@ async def set_user_active(session: AsyncSession,
         raise e
 
 
+async def set_user_permission(session: AsyncSession,
+                              telegram_id: int,
+                              has_permission: bool
+                              ) -> bool:
+    '''Изменяет значение флага has_permission.
+    Возвращает True, если пользователь найден и обновлен.'''
+    try:
+        user = await get_user_by_telegram_id(session, telegram_id)
+        if not user:
+            return False
+        user.has_permission = has_permission
+        if not has_permission:
+            user.is_active = False
+        await session.commit()
+        return True
+    except SQLAlchemyError as e:
+        await session.rollback()
+        raise e
+
+
 async def delete_user(session: AsyncSession, telegram_id: int) -> bool:
     '''Служебная функция на время разработки.
     Удаляет пользователя из БД.'''

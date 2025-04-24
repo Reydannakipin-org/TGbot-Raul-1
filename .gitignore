@@ -11,3 +11,7 @@ __pycache__/
 *.db
 *.sqlite
 *.sqlite3
+
+# JetBrains IDE
+.idea/
+*.iml
