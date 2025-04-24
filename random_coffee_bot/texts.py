@@ -36,5 +36,6 @@ TEXTS = {
     
     # Кнопки для неактивных пользователей
     'resume_participation': "▶️ Возобновить участие",
-    'how_it_works_inactive': "❓ Как работает Random Coffee?"
+    'how_it_works_inactive': "❓ Как работает Random Coffee?", 
+    
     }

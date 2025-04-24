@@ -1,5 +1,6 @@
 from aiogram.types import KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 button_change_my_details = KeyboardButton(text="✏️ Изменить мои данные")
 button_my_status = KeyboardButton(text="📊 Мой статус участия")
@@ -11,6 +12,14 @@ button_how_it_works = KeyboardButton(text="❓ Как работает Random Co
 # Кнопки для неактивных пользователей
 button_resume_participation = KeyboardButton(text="▶️ Возобновить участие")
 button_how_it_works_inactive = KeyboardButton(text="❓ Как работает Random Coffee?")
+
+
+def create_confirmation_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Да", callback_data="confirm_yes"),
+         InlineKeyboardButton(text="Нет", callback_data="confirm_no")]
+    ])
+    return keyboard
 
 
 # Функция для создания клавиатуры для активных пользователей
