@@ -120,41 +120,56 @@ async def generate_unique_pairs(session, users: list[User]) -> list[Pair]:
 
 
 async def notify_users_about_pairs(session: AsyncSession, pairs: list[Pair], bot: Bot):
-    """Отправляет сообщения участникам пар через Telegram."""
+    """Отправляет сообщения участникам пар через Telegram, используя HTML-ссылки с tg://user?id."""
     for pair in pairs:
-        users_in_pair = [
-            (pair.user1_id, pair.user1_username),
-            (pair.user2_id, pair.user2_username),
-        ]
+        user_ids = [pair.user1_id, pair.user2_id]
         if pair.user3_id:
-            users_in_pair.append((pair.user3_id, pair.user3_username))
+            user_ids.append(pair.user3_id)
 
-        for user_id, username in users_in_pair:
-            result = await session.execute(
-                select(User.telegram_id).where(User.id == user_id)
-            )
-            telegram_id = result.scalar()
+        # Загружаем данные всех участников пары
+        result = await session.execute(
+            select(User.id, User.telegram_id, User.first_name, User.last_name).where(User.id.in_(user_ids))
+        )
+        user_data = {
+            row.id: {
+                "telegram_id": row.telegram_id,
+                "first_name": row.first_name or "Пользователь",
+                "last_name": row.last_name,
+            }
+            for row in result.fetchall()
+        }
 
-            if not telegram_id:
+        for user_id in user_ids:
+            user_info = user_data.get(user_id)
+            if not user_info or not user_info["telegram_id"]:
                 print(f"❗ Не удалось найти telegram_id для user_id={user_id}")
                 continue
 
-            partner_names = [
-                u[1] or "пользователь без имени"
-                for u in users_in_pair if u[0] != user_id
-            ]
-            partners_str = ", @".join(partner_names)
+            # Формируем ссылки на партнёров
+            partner_links = []
+            for partner_id in user_ids:
+                if partner_id == user_id:
+                    continue
+                partner = user_data.get(partner_id)
+                if partner and partner["telegram_id"]:
+                    name = f'{partner["first_name"]} {partner["last_name"]}'.strip()
+                    link = f'<a href="tg://user?id={partner["telegram_id"]}">{name}</a>'
+                    partner_links.append(link)
+                else:
+                    partner_links.append("неизвестный пользователь")
+
+            partners_str = ", ".join(partner_links)
 
             message = (
                 f"👥 Ваша пара на эту неделю:\n"
-                f"@{partners_str}\n\n"
+                f"{partners_str}\n\n"
                 f"Свяжитесь друг с другом и договоритесь о встрече!"
             )
 
             try:
-                await bot.send_message(chat_id=telegram_id, text=message)
+                await bot.send_message(chat_id=user_info["telegram_id"], text=message, parse_mode="HTML")
             except Exception as e:
-                print(f"⚠️ Не удалось отправить сообщение {username}: {e}")
+                print(f"⚠️ Не удалось отправить сообщение для user_id={user_id}: {e}")
 
 
 def setup_scheduler(session_maker, bot: Bot):
