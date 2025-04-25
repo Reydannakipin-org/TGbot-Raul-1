@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from bot import setup_scheduler, schedule_feedback_jobs
+from bot import schedule_feedback_jobs
 from aiogram import Bot, Dispatcher
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from config import Config, load_config
@@ -40,7 +40,7 @@ async def main():
     dp.update.middleware(GroupMemberMiddleware())
     dp.include_router(admin_router)
     dp.include_router(user_router)
-    setup_scheduler(session_maker, bot)
+    #setup_scheduler(session_maker, bot)
     schedule_feedback_jobs(bot, session_maker, dp)
 
     await dp.start_polling(bot)

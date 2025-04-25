@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 import asyncio
 from aiogram import Dispatcher
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-
+from apscheduler.triggers.cron import CronTrigger
 
 scheduler = AsyncIOScheduler()
 
@@ -204,26 +204,20 @@ async def notify_users_about_pairs(session: AsyncSession, pairs: list[Pair], bot
 
 
 
-def setup_scheduler(session_maker, bot: Bot):
-    @scheduler.scheduled_job("cron", minute="*")   #каждую минуту для тестов
-    #@scheduler.scheduled_job("cron", day_of_week="tue", hour=10)  # каждый вторник в 10 часов потом обновлю до нужного интервала
-    async def auto_pairing():
-        async with session_maker() as session:
-            users = await get_users_ready_for_matching(session)
-            if len(users) < 2:
-                print("❗ Недостаточно пользователей для формирования пар.")
-                return
+async def auto_pairing(session_maker, bot: Bot):
+    async with session_maker() as session:
+        users = await get_users_ready_for_matching(session)
+        if len(users) < 2:
+            print("❗ Недостаточно пользователей для формирования пар.")
+            return
 
-            # 💡 Новый способ формирования пар
-            pairs = await generate_unique_pairs(session, users)
+        # 💡 Новый способ формирования пар
+        pairs = await generate_unique_pairs(session, users)
 
-            await session.commit()
-            print(f"✅ Сформировано {len(pairs)} пар.")
+        await session.commit()
+        print(f"✅ Сформировано {len(pairs)} пар.")
 
-            await notify_users_about_pairs(session, pairs, bot)
-
-    if not scheduler.running:
-        scheduler.start()
+        await notify_users_about_pairs(session, pairs, bot)
 
 async def save_comment(telegram_id: int, comment_text: str, session_maker: async_sessionmaker) -> str:
     async with session_maker() as session:
@@ -275,30 +269,51 @@ async def save_comment(telegram_id: int, comment_text: str, session_maker: async
         await session.commit()
         return status_msg
 
+
 async def start_feedback_prompt(bot: Bot, telegram_id: int, dispatcher: Dispatcher):
-    state = dispatcher.fsm.get_context(bot=bot, user_id=telegram_id, chat_id=telegram_id)
+    fsm_context = dispatcher.fsm.get_context(user_id=telegram_id, chat_id=telegram_id, bot=bot)
+
+    # Получаем текущее состояние
+    state = await fsm_context.get_state()
+
     await bot.send_message(
         telegram_id,
         "Привет! Прошла ли встреча?",
-        reply_markup=meeting_question_kb()
+        reply_markup=meeting_question_kb()  # Убедись, что у тебя есть функция meeting_question_kb()
     )
-    await state.set_state(FeedbackStates.waiting_for_feedback_decision)
+
+    await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
 
 def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
     async def setup_jobs():
+        # Сначала создаем задачу для отправки напоминаний (каждые 60 секунд для тестов)
         async with session_maker() as session:
             users_result = await session.execute(select(User.telegram_id).where(User.is_active == True))
             telegram_ids = users_result.scalars().all()
 
             for telegram_id in telegram_ids:
+                # Напоминания отправляются каждые 60 секунд (это для теста)
                 scheduler.add_job(
                     start_feedback_prompt,
-                    trigger=IntervalTrigger(seconds=60),
+                    trigger=IntervalTrigger(seconds=10),  # можешь изменить на нужный интервал
                     args=[bot, telegram_id, dispatcher],
                     id=f"feedback_{telegram_id}",
                     replace_existing=True,
                 )
+
+        # Создаем задачу для формирования пар (каждую неделю по понедельникам)
+        scheduler.add_job(
+            auto_pairing,
+            #CronTrigger(day_of_week="mon", hour=10, minute=0),
+            trigger=IntervalTrigger(seconds=50),# Каждую неделю в понедельник в 10:00
+            args=[session_maker, bot],
+            id="auto_pairing_weekly"
+        )
+
+    # Запускаем задачу setup_jobs в фоновом режиме
     asyncio.create_task(setup_jobs())
+
+    # Проверяем, запущен ли планировщик
     if not scheduler.running:
         scheduler.start()
 
