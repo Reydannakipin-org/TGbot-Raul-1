@@ -4,7 +4,7 @@ from aiogram import F, Router, types
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import Message
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.db import AsyncSessionLocal
@@ -151,7 +151,9 @@ async def warning_not_last_name(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от пользователя его фамилию,
     и она введена неверно. Просим пользователя ввести заново.
     '''
-    logger.info(f'Отказ. Получено сообщение в качестве фамилии: {message.text}')
+    logger.info(
+        f'Отказ. Получено сообщение в качестве фамилии: {message.text}'
+    )
     await message.answer(TEXTS['not_last_name'])
 
 
@@ -222,73 +224,115 @@ async def process_change_name(message: Message, state: FSMContext):
     await state.set_state(FSMUserForm.waiting_for_first_name)
 
 
-users_data = {
-    751138564: {'active': True},  # Пример пользователя с активным статусом
-    269444415: {'active': True}, # Пример пользователя с неактивным статусом
-}
-
 @user_router.message(Command(commands='user'), StateFilter(default_state))
 async def process_user(message: Message):
-    telegram_id = message.from_user.id  # Получаем telegram_id пользователя
+    """Хэндлер для команды /user. Получает информацию о пользователе."""
+    telegram_id = message.from_user.id
 
-    # Получаем данные пользователя из хранилища
-    user_data = users_data.get(telegram_id)
+    async with AsyncSessionLocal() as session:
+        user = await get_user_by_telegram_id(session, telegram_id)
 
-    if user_data is not None:
-        if user_data['active']:  # Проверяем значение поля active
-            keyboard = create_active_user_keyboard()  # Создаем клавиатуру для активных пользователей
-            await message.answer("Добро пожаловать обратно! Вы активный пользователь.", reply_markup=keyboard)
+    if user is not None:
+        if user.is_active:
+            keyboard = create_active_user_keyboard()
+            await message.answer(
+                "Добро пожаловать обратно! Вы активный пользователь.",
+                reply_markup=keyboard
+            )
         else:
-            keyboard = create_inactive_user_keyboard()  # Создаем клавиатуру для неактивных пользователей
-            await message.answer("Вы неактивны. Пожалуйста, свяжитесь с администратором.", reply_markup=keyboard)
+            keyboard = create_inactive_user_keyboard()
+            await message.answer(
+                "Вы неактивны. Пожалуйста, свяжитесь с администратором.",
+                reply_markup=keyboard
+            )
     else:
-        keyboard = create_inactive_user_keyboard()  # Можно также показать неактивную клавиатуру для незарегистрированных пользователей
-        await message.answer("Привет! Вы не зарегистрированы в системе.", reply_markup=keyboard)
+        keyboard = create_inactive_user_keyboard()
+        await message.answer(
+            "Привет! Вы не зарегистрированы в системе.",
+            reply_markup=keyboard
+        )
 
 
-@user_router.message(lambda message: message.text == "⏸️ Приостановить участие")
+@user_router.message(
+    lambda message: message.text == "⏸️ Приостановить участие"
+)
 async def pause_participation(message: types.Message):
-    telegram_id = message.from_user.id  # Получаем telegram_id пользователя
-    user_data = users_data.get(telegram_id)
+    """Хэндлер для приостановки участия пользователя."""
+    telegram_id = message.from_user.id
 
-    if user_data and user_data['active']:
-        await message.answer("Вы точно хотите приостановить участие?", reply_markup=create_confirmation_keyboard())
+    async with AsyncSessionLocal() as session:
+        user = await get_user_by_telegram_id(session, telegram_id)
+
+    if user and user.is_active:
+        await message.answer(
+            "Вы точно хотите приостановить участие?",
+            reply_markup=create_confirmation_keyboard()
+        )
     else:
         await message.answer("Вы уже неактивны.")
 
 
 @user_router.message(lambda message: message.text == "▶️ Возобновить участие")
 async def resume_participation(message: types.Message):
-    telegram_id = message.from_user.id  # Получаем telegram_id пользователя
-    user_data = users_data.get(telegram_id)
+    """Хэндлер для возобновления участия пользователя."""
+    telegram_id = message.from_user.id
 
-    if user_data and not user_data['active']:
-        await message.answer("Вы точно хотите возобновить участие?", reply_markup=create_confirmation_keyboard())
+    async with AsyncSessionLocal() as session:
+        user = await get_user_by_telegram_id(session, telegram_id)
+
+    if user and not user.is_active:
+        await message.answer(
+            "Вы точно хотите возобновить участие?",
+            reply_markup=create_confirmation_keyboard()
+        )
     else:
         await message.answer("Вы уже активны.")
 
 
-# Обработчик callback-запросов для обработки нажатий на кнопки "Да" и "Нет"
 @user_router.callback_query(lambda c: c.data.startswith("confirm_"))
 async def process_confirmation(callback_query: types.CallbackQuery):
-    telegram_id = callback_query.from_user.id  # Получаем telegram_id пользователя
+    """Хэндлер для обработки подтверждения изменения статуса участия."""
+    telegram_id = callback_query.from_user.id
 
-    if telegram_id not in users_data:
-        await callback_query.answer("Пользователь не найден.", show_alert=True)
-        return
+    async with AsyncSessionLocal() as session:
+        user = await get_user_by_telegram_id(session, telegram_id)
 
-    await callback_query.message.delete()
+        if user is None:
+            await callback_query.answer(
+                "Пользователь не найден.", show_alert=True
+            )
+            return
 
-    if callback_query.data == "confirm_yes":
-        if users_data[telegram_id]['active']:  # Если пользователь активен, приостанавливаем его участие
-            users_data[telegram_id]['active'] = False
-            await callback_query.message.answer('Вы приостановили участие', reply_markup=create_inactive_user_keyboard())
-        else:  # Если пользователь неактивен, возобновляем его участие
-            users_data[telegram_id]['active'] = True
-            await callback_query.message.answer('Вы возобновили участие', reply_markup=create_active_user_keyboard())
+        try:
+            await callback_query.message.delete()
 
-    elif callback_query.data == "confirm_no":
-        await callback_query.answer('Вы решили не изменять статус участия', show_alert=True)
+            if callback_query.data == "confirm_yes":
+                if user.is_active:
+                    user.is_active = False
+                    await set_user_active(session, telegram_id, False)
+                    await callback_query.message.answer(
+                        'Вы приостановили участие',
+                        reply_markup=create_inactive_user_keyboard()
+                    )
+                else:
+                    user.is_active = True
+                    await set_user_active(session, telegram_id, True)
+                    await callback_query.message.answer(
+                        'Вы возобновили участие',
+                        reply_markup=create_active_user_keyboard()
+                    )
 
-    # Уведомляем Telegram о том, что запрос обработан
-    await callback_query.answer()
+            elif callback_query.data == "confirm_no":
+                await callback_query.answer(
+                    'Вы решили не изменять статус участия', show_alert=True
+                )
+
+            # Уведомляем Telegram о том, что запрос обработан
+            await callback_query.answer()
+
+        except Exception as e:
+            print(f"Произошла ошибка: {e}")
+            await callback_query.answer(
+                "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
+                show_alert=True
+            )
