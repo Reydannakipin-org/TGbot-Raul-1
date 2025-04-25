@@ -1,12 +1,14 @@
 import logging
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, Sequence
 
+import asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.models import Setting, User
+from utils.google_sheets import users_sheet
 from texts import ADMIN_TEXTS, INTERVAL_TEXTS
 from services.user_service import get_user_by_telegram_id
 
@@ -167,3 +169,54 @@ async def set_new_global_interval(session: AsyncSession, new_value: int
 
 def get_next_pairing_date() -> Optional[date]:
     return None
+
+
+async def get_all_users(session: AsyncSession) -> Sequence[User]:
+    """
+    Извлекает из БД всех пользователей, сортирует по дате присоединения.
+    """
+    try:
+        result = await session.execute(
+            select(User).order_by(User.joined_at)
+        )
+        users = result.scalars().all()
+        return users
+
+    except SQLAlchemyError as e:
+        await session.rollback()
+        raise e
+
+
+async def export_users_to_gsheet(
+    session: AsyncSession
+) -> int:
+    """
+    Берёт всех пользователей из БД и записывает их в Гугл Таблицу.
+    Возвращает число отправленных строк.
+    """
+    users = await get_all_users(session)
+    worksheet = users_sheet
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, worksheet.clear)
+    headers = ['telegram_id', 'Имя', 'Фамилия', 'Статус', 'Наличие разрешения',
+               'Интервал', 'На паузе до', 'Дата присоединения']
+    await loop.run_in_executor(None, worksheet.append_row, headers)
+
+    for u in users:
+        telegram_id = u.telegram_id
+        first_name = u.first_name
+        last_name = u.last_name if u.last_name else '-'
+        is_active = 'да' if u.is_active else 'нет'
+        has_permission = 'да' if u.has_permission else 'нет'
+        pairing_interval = (INTERVAL_TEXTS['default'] if not u.pairing_interval
+                            else INTERVAL_TEXTS[str(u.pairing_interval)])
+        pause_until = (u.pause_until.strftime("%d.%m.%Y") if u.pause_until
+                       else '')
+        joined_at = u.joined_at.strftime("%d.%m.%Y")
+
+        row = [telegram_id, first_name, last_name, is_active, has_permission,
+               pairing_interval, pause_until, joined_at]
+        await loop.run_in_executor(None, worksheet.append_row, row)
+
+    return len(users)

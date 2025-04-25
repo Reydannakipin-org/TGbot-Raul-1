@@ -6,6 +6,12 @@ from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
 from aiogram.types import CallbackQuery, Message
+from gspread.exceptions import (
+    APIError,
+    SpreadsheetNotFound,
+    WorksheetNotFound
+)
+from oauth2client.client import HttpAccessTokenRefreshError
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.db import AsyncSessionLocal
@@ -24,7 +30,8 @@ from services.admin_service import (create_text_about_user,
                                     parse_callback_data,
                                     set_new_global_interval,
                                     set_user_permission,
-                                    set_user_puase_until)
+                                    set_user_puase_until,
+                                    export_users_to_gsheet)
 from services.user_service import get_user_by_telegram_id
 from states.admin_states import FSMAdminPanel
 from texts import ADMIN_TEXTS, INTERVAL_TEXTS, KEYBOARD_BUTTON_TEXTS
@@ -476,6 +483,54 @@ async def process_cancel_changing_interval(callback: CallbackQuery):
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@admin_router.message(Command(commands='contact'), StateFilter(default_state))
+async def process_contact_command(message: Message):
+    '''Хэндлер срабатывает на команду /contact и отправляет инфо.'''
+    user_id = 7951238998
+    first_name = 'Татьяна'
+    last_name = 'Д.'
+    text = (f'Контакт твоего коллеги: '
+            f'<a href="https://t.me/@id{user_id}">{first_name} {last_name}</a>'
+            )
+
+    await message.answer(text=text, parse_mode='HTML')
+
+
+@admin_router.message(Command("export"), StateFilter(default_state))
+async def process_export_users_to_gsheet(message: Message):
+    await message.answer("⌛️ Начинаю экспорт данных в таблицу users…")
+
+    try:
+        async with AsyncSessionLocal() as session:
+            count = await export_users_to_gsheet(session)
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+    except SpreadsheetNotFound:
+        await message.answer('❌ Не нашёл таблицу по этому ID. '
+                             'Проверьте SPREADSHEET_ID и доступы.')
+    except WorksheetNotFound:
+        await message.answer('❌ Лист с таким именем не найден. '
+                             'Проверьте имя листа в коде.')
+    except APIError as e:
+        # e.response.json() может дать подробности от Google API
+        await message.answer(f'❌ Ошибка API Google Sheets: '
+                             f'{e.response.status_code} — {e.response.reason}')
+    except HttpAccessTokenRefreshError:
+        await message.answer('❌ Не удалось обновить токен доступа. Проверьте '
+                             'credentials.json и права сервис-аккаунта.')
+    except Exception as e:
+        # на всякий случай ловим всё остальное
+        await message.answer(f'❌ Неожиданная ошибка при записи в Google '
+                             f'Sheets:\n{e}')
+    else:
+        # 4) Отвечаем пользователю
+        await message.answer(
+            f'✅ Экспорт таблицы users завершён: {count} строк отправлено.'
+        )
 
 
 @admin_router.message(F.text)
