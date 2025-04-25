@@ -1,12 +1,15 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timedelta, date
 from random import shuffle
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.models import User, Pair, Setting
+from database.models import User, Pair, Setting, Feedback
 from aiogram import Bot
 import random
 from collections import defaultdict
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 
 scheduler = AsyncIOScheduler()
 
@@ -191,3 +194,76 @@ def setup_scheduler(session_maker, bot: Bot):
             await notify_users_about_pairs(session, pairs, bot)
 
     scheduler.start()
+
+async def save_comment(user_id: int, comment_text: str, session_maker: async_sessionmaker) -> str:
+    async with session_maker() as session:
+        # Пробуем найти пару, где пользователь может быть либо user1, либо user2, либо user3
+        result_pair = await session.execute(
+            select(Pair).where(or_(Pair.user1_id == user_id, Pair.user2_id == user_id))
+        )
+
+        pair = result_pair.scalar()
+
+        if pair is None:
+            print(f"No pair found for user_id {user_id}")
+        else:
+            print(f"Found pair: {pair}")
+
+        if not pair:
+            return "Ошибка: вы ещё не участвуете в паре 🤷"
+
+        pair_id = pair.id
+
+        # Теперь ищем или создаем feedback
+        result_feedback = await session.execute(
+            select(Feedback).where(Feedback.user_id == user_id)
+        )
+        feedback = result_feedback.scalar()
+
+        if feedback:
+            await session.execute(
+                update(Feedback)
+                .where(Feedback.user_id == user_id)
+                .values(comment=comment_text, submitted_at=datetime.utcnow(), did_meet=True)
+            )
+            status_msg = "Комментарий обновлён ✅"
+        else:
+            new_feedback = Feedback(
+                pair_id=pair_id,
+                user_id=user_id,
+                comment=comment_text,
+                did_meet=True,
+                submitted_at=datetime.utcnow()
+            )
+            session.add(new_feedback)
+            status_msg = "Спасибо за ваш комментарий ✅"
+
+        await session.commit()
+        return status_msg
+
+# async def save_comment(user_id: int, comment_text: str, session_maker: async_sessionmaker) -> str:
+#     async with session_maker() as session:
+#         result = await session.execute(
+#             select(Feedback).where(Feedback.user_id == user_id)
+#         )
+#         feedback = result.scalar()
+#
+#         if feedback:
+#             await session.execute(
+#                 update(Feedback)
+#                 .where(Feedback.user_id == user_id)
+#                 .values(comment=comment_text, submitted_at=datetime.utcnow(), did_meet=True)
+#             )
+#             status_msg = "Комментарий обновлён ✅"
+#         else:
+#             new_feedback = Feedback(
+#                 user_id=user_id,
+#                 comment=comment_text,
+#                 did_meet=True,
+#                 submitted_at=datetime.utcnow()
+#             )
+#             session.add(new_feedback)
+#             status_msg = "Спасибо за ваш комментарий ✅"
+#
+#         await session.commit()
+#         return status_msg

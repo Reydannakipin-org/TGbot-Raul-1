@@ -62,6 +62,7 @@ class Pair(CommonMixin, Base):
     user2_username = Column(String, nullable=False)
     user3_username = Column(String, nullable=True)
 
+    #paired_at = Column(Date, default=datetime.utcnow().date, nullable=False)
     paired_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user1 = relationship(
