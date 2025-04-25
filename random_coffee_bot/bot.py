@@ -195,37 +195,41 @@ def setup_scheduler(session_maker, bot: Bot):
 
     scheduler.start()
 
-async def save_comment(user_id: int, comment_text: str, session_maker: async_sessionmaker) -> str:
+async def save_comment(telegram_id: int, comment_text: str, session_maker: async_sessionmaker) -> str:
     async with session_maker() as session:
-        # Пробуем найти пару, где пользователь может быть либо user1, либо user2, либо user3
-        result_pair = await session.execute(
-            select(Pair).where(or_(Pair.user1_id == user_id, Pair.user2_id == user_id))
+        # Получаем user по telegram_id
+        result_user = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
         )
+        user = result_user.scalar()
+        if user is None:
+            return f"Пользователь с telegram_id {telegram_id} не найден"
 
-        pair = result_pair.scalar()
+        user_id = user.id
 
-        if pair is None:
-            print(f"No pair found for user_id {user_id}")
-        else:
-            print(f"Found pair: {pair}")
+        # Ищем последнюю пару, где он есть
+        result_pair = await session.execute(
+            select(Pair)
+            .where(or_(Pair.user1_id == user_id, Pair.user2_id == user_id, Pair.user3_id == user_id))
+            .order_by(Pair.paired_at.desc())
+        )
+        pair = result_pair.scalars().first()
 
         if not pair:
             return "Ошибка: вы ещё не участвуете в паре 🤷"
 
+        # Тут сохраняем комментарий
         pair_id = pair.id
 
-        # Теперь ищем или создаем feedback
         result_feedback = await session.execute(
-            select(Feedback).where(Feedback.user_id == user_id)
+            select(Feedback).where(Feedback.user_id == user_id, Feedback.pair_id == pair_id)
         )
         feedback = result_feedback.scalar()
 
         if feedback:
-            await session.execute(
-                update(Feedback)
-                .where(Feedback.user_id == user_id)
-                .values(comment=comment_text, submitted_at=datetime.utcnow(), did_meet=True)
-            )
+            feedback.comment = comment_text
+            feedback.submitted_at = datetime.utcnow()
+            feedback.did_meet = True
             status_msg = "Комментарий обновлён ✅"
         else:
             new_feedback = Feedback(

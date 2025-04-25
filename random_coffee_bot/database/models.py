@@ -21,6 +21,7 @@ class CommonMixin:
 class User(CommonMixin, Base):
     """Таблица пользователя."""
 
+    id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False)
     username = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
