@@ -222,14 +222,12 @@ async def process_change_name(message: Message, state: FSMContext):
     await state.set_state(FSMUserForm.waiting_for_first_name)
 
 
-'''Временно.'''
 users_data = {
     751138564: {'active': True},  # Пример пользователя с активным статусом
     269444415: {'active': True}, # Пример пользователя с неактивным статусом
 }
 
-@user_router.message(Command(commands='user'),
-                     StateFilter(default_state))
+@user_router.message(Command(commands='user'), StateFilter(default_state))
 async def process_user(message: Message):
     telegram_id = message.from_user.id  # Получаем telegram_id пользователя
 
@@ -247,27 +245,37 @@ async def process_user(message: Message):
         keyboard = create_inactive_user_keyboard()  # Можно также показать неактивную клавиатуру для незарегистрированных пользователей
         await message.answer("Привет! Вы не зарегистрированы в системе.", reply_markup=keyboard)
 
-@user_router.message(lambda message: message.text in ["⏸️ Приостановить участие", "▶️ Возобновить участие"])
-async def toggle_participation(message: types.Message):
+
+@user_router.message(lambda message: message.text == "⏸️ Приостановить участие")
+async def pause_participation(message: types.Message):
     telegram_id = message.from_user.id  # Получаем telegram_id пользователя
     user_data = users_data.get(telegram_id)
 
-    if message.text == "⏸️ Приостановить участие":
-        if user_data and user_data['active']:
-            await message.answer("Вы точно хотите приостановить участие?", reply_markup=create_confirmation_keyboard())
-        else:
-            await message.answer("Вы уже неактивны.")
+    if user_data and user_data['active']:
+        await message.answer("Вы точно хотите приостановить участие?", reply_markup=create_confirmation_keyboard())
+    else:
+        await message.answer("Вы уже неактивны.")
 
-    elif message.text == "▶️ Возобновить участие":
-        if user_data and not user_data['active']:
-            await message.answer("Вы точно хотите возобновить участие?", reply_markup=create_confirmation_keyboard())
-        else:
-            await message.answer("Вы уже активны.")
+
+@user_router.message(lambda message: message.text == "▶️ Возобновить участие")
+async def resume_participation(message: types.Message):
+    telegram_id = message.from_user.id  # Получаем telegram_id пользователя
+    user_data = users_data.get(telegram_id)
+
+    if user_data and not user_data['active']:
+        await message.answer("Вы точно хотите возобновить участие?", reply_markup=create_confirmation_keyboard())
+    else:
+        await message.answer("Вы уже активны.")
+
 
 # Обработчик callback-запросов для обработки нажатий на кнопки "Да" и "Нет"
 @user_router.callback_query(lambda c: c.data.startswith("confirm_"))
 async def process_confirmation(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id  # Получаем telegram_id пользователя
+
+    if telegram_id not in users_data:
+        await callback_query.answer("Пользователь не найден.", show_alert=True)
+        return
 
     if callback_query.data == "confirm_yes":
         if users_data[telegram_id]['active']:  # Если пользователь активен, приостанавливаем его участие
@@ -277,11 +285,11 @@ async def process_confirmation(callback_query: types.CallbackQuery):
             users_data[telegram_id]['active'] = True
             await callback_query.message.answer('Вы возобновили участие', reply_markup=create_active_user_keyboard())
 
-        await callback_query.message.edit_reply_markup(reply_markup=None)
-    
     elif callback_query.data == "confirm_no":
         await callback_query.answer('Вы решили не изменять статус участия', show_alert=True)
-        await callback_query.message.edit_reply_markup(reply_markup=None)
+
+    # Удаляем клавиатуру после обработки запроса
+    await callback_query.message.edit_reply_markup(reply_markup=None)
 
     # Уведомляем Telegram о том, что запрос обработан
     await callback_query.answer()
