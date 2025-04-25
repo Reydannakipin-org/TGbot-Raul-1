@@ -4,10 +4,11 @@ from aiogram import F, Router, types
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.db import AsyncSessionLocal
+from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
 from texts import TEXTS
 from services.user_service import (create_user,
                                    delete_user,
@@ -25,6 +26,8 @@ from keyboards.user_buttons import (
 logger = logging.getLogger(__name__)
 
 user_router = Router()
+user_router.message.filter(~AdminMessageFilter())
+user_router.callback_query.filter(~AdminCallbackFilter())
 
 
 @user_router.message(CommandStart(), StateFilter(default_state))
@@ -174,7 +177,8 @@ async def process_delete_me_command(message: Message):
         async with AsyncSessionLocal() as session:
             deleted = await delete_user(session, user_telegram_id)
             if deleted:
-                await message.answer('Ваш аккаунт успешно удалён.')
+                await message.answer('Ваш аккаунт успешно удалён.',
+                                     reply_markup=ReplyKeyboardRemove())
                 logger.info('Пользователь удален')
             else:
                 await message.answer('Вы не зарегистрированы, нечего удалять.')
@@ -336,3 +340,19 @@ async def process_confirmation(callback_query: types.CallbackQuery):
                 "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
                 show_alert=True
             )
+
+
+@user_router.message(Command(commands='clean'),
+                     StateFilter(default_state))
+async def process_clean_keyboards(message: Message, state: FSMContext):
+    '''
+    Служебный хэндлер для удаления клавиатуры на этапе тестирования.
+    '''
+    await message.answer('Убираем клаву',
+                         reply_markup=ReplyKeyboardRemove())
+
+
+@user_router.message(F.text)
+async def fallback_handler(message: Message):
+    await message.answer('Я не знаю такой команды. '
+                         'Пожалуйста, используй клавиатуру.')

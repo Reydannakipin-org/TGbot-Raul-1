@@ -6,6 +6,7 @@ button_participant_management = KeyboardButton(text="👥 Управление �
 button_google_sheets = KeyboardButton(text="📊 Выгрузка в Google Sheets")
 button_create_pair = KeyboardButton(text="🤝 Настройка создания пар")
 
+
 buttons_kb_builder_admin = ReplyKeyboardBuilder()
 
 buttons_kb_builder_admin.row(
@@ -13,6 +14,7 @@ buttons_kb_builder_admin.row(
     button_participant_management,
     button_google_sheets,
     button_create_pair,
+
     width=1
 )
 
