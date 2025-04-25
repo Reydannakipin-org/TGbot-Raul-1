@@ -277,6 +277,8 @@ async def process_confirmation(callback_query: types.CallbackQuery):
         await callback_query.answer("Пользователь не найден.", show_alert=True)
         return
 
+    await callback_query.message.delete()
+
     if callback_query.data == "confirm_yes":
         if users_data[telegram_id]['active']:  # Если пользователь активен, приостанавливаем его участие
             users_data[telegram_id]['active'] = False
@@ -287,9 +289,6 @@ async def process_confirmation(callback_query: types.CallbackQuery):
 
     elif callback_query.data == "confirm_no":
         await callback_query.answer('Вы решили не изменять статус участия', show_alert=True)
-
-    # Удаляем клавиатуру после обработки запроса
-    await callback_query.message.edit_reply_markup(reply_markup=None)
 
     # Уведомляем Telegram о том, что запрос обработан
     await callback_query.answer()
