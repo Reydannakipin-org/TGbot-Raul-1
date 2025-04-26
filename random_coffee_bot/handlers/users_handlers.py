@@ -1,10 +1,10 @@
 import logging
 
-from aiogram import F, Router, types
+from aiogram import F, Router
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
-from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import Message, ReplyKeyboardRemove, CallbackQuery
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.db import AsyncSessionLocal
@@ -18,8 +18,9 @@ from services.user_service import (create_user,
 from states.user_states import FSMUserForm
 from keyboards.user_buttons import (
     create_active_user_keyboard,
-    create_inactive_user_keyboard,
-    create_confirmation_keyboard
+    create_activate_keyboard,
+    create_deactivate_keyboard,
+    create_inactive_user_keyboard
 )
 
 
@@ -228,9 +229,12 @@ async def process_change_name(message: Message, state: FSMContext):
     await state.set_state(FSMUserForm.waiting_for_first_name)
 
 
+# Служебная команда только на время разработки!
 @user_router.message(Command(commands='user'), StateFilter(default_state))
 async def process_user(message: Message):
     """Хэндлер для команды /user. Получает информацию о пользователе."""
+    if message.from_user is None:
+        return await message.answer(TEXTS['error_access'])
     telegram_id = message.from_user.id
 
     async with AsyncSessionLocal() as session:
@@ -258,26 +262,38 @@ async def process_user(message: Message):
 
 
 @user_router.message(
-    lambda message: message.text == "⏸️ Приостановить участие"
+    lambda message: message.text == "⏸️ Приостановить участие",
+    StateFilter(default_state)
 )
-async def pause_participation(message: types.Message):
+async def pause_participation(message: Message, state: FSMContext):
     """Хэндлер для приостановки участия пользователя."""
+    if message.from_user is None:
+        return await message.answer(TEXTS['error_access'])
     telegram_id = message.from_user.id
 
-    async with AsyncSessionLocal() as session:
-        user = await get_user_by_telegram_id(session, telegram_id)
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, telegram_id)
+    except SQLAlchemyError:
+        logger.exception("Ошибка при запросе пользователя для паузы участия.")
+        return await message.answer(TEXTS['db_error'])
 
-    if user and user.is_active:
+    if user is None:
+        return await message.answer(TEXTS['error_find_user'])
+
+    if user.is_active:
         await message.answer(
             "Вы точно хотите приостановить участие?",
-            reply_markup=create_confirmation_keyboard()
+            reply_markup=create_deactivate_keyboard()
         )
     else:
         await message.answer("Вы уже неактивны.")
 
 
-@user_router.message(lambda message: message.text == "▶️ Возобновить участие")
-async def resume_participation(message: types.Message):
+@user_router.message(lambda message: message.text == "▶️ Возобновить участие",
+                     StateFilter(default_state)
+                     )
+async def resume_participation(message: Message, state: FSMContext):
     """Хэндлер для возобновления участия пользователя."""
     telegram_id = message.from_user.id
 
@@ -287,59 +303,82 @@ async def resume_participation(message: types.Message):
     if user and not user.is_active:
         await message.answer(
             "Вы точно хотите возобновить участие?",
-            reply_markup=create_confirmation_keyboard()
+            reply_markup=create_activate_keyboard()
         )
     else:
         await message.answer("Вы уже активны.")
 
 
-@user_router.callback_query(lambda c: c.data.startswith("confirm_"))
-async def process_confirmation(callback_query: types.CallbackQuery):
-    """Хэндлер для обработки подтверждения изменения статуса участия."""
+@user_router.callback_query(lambda c: c.data.startswith("confirm_deactivate_"),
+                            StateFilter(default_state))
+async def process_deactivate_confirmation(callback_query: CallbackQuery):
+    """Хэндлер для обработки подтверждения приостановки участия."""
     telegram_id = callback_query.from_user.id
 
     async with AsyncSessionLocal() as session:
         user = await get_user_by_telegram_id(session, telegram_id)
 
         if user is None:
-            await callback_query.answer(
-                "Пользователь не найден.", show_alert=True
-            )
+            await callback_query.answer("Пользователь не найден.", show_alert=True)
             return
 
         try:
             await callback_query.message.delete()
 
-            if callback_query.data == "confirm_yes":
+            if callback_query.data == "confirm_deactivate_yes":
                 if user.is_active:
-                    user.is_active = False
                     await set_user_active(session, telegram_id, False)
                     await callback_query.message.answer(
                         'Вы приостановили участие',
                         reply_markup=create_inactive_user_keyboard()
                     )
                 else:
-                    user.is_active = True
+                    await callback_query.answer("Вы уже приостановили участие.", show_alert=True)
+
+            elif callback_query.data == "confirm_deactivate_no":
+                await callback_query.answer('Вы решили не изменять статус участия', show_alert=True)
+
+            await callback_query.answer()
+
+        except Exception as e:
+            print(f"Произошла ошибка: {e}")
+            await callback_query.answer("Произошла ошибка. Пожалуйста, попробуйте еще раз.", show_alert=True)
+
+
+@user_router.callback_query(lambda c: c.data.startswith("confirm_activate_"),
+                            StateFilter(default_state))
+async def process_activate_confirmation(callback_query: CallbackQuery):
+    """Хэндлер для обработки подтверждения возобновления участия."""
+    telegram_id = callback_query.from_user.id
+
+    async with AsyncSessionLocal() as session:
+        user = await get_user_by_telegram_id(session, telegram_id)
+
+        if user is None:
+            await callback_query.answer("Пользователь не найден.", show_alert=True)
+            return
+
+        try:
+            await callback_query.message.delete()
+
+            if callback_query.data == "confirm_activate_yes":
+                if not user.is_active:
                     await set_user_active(session, telegram_id, True)
                     await callback_query.message.answer(
                         'Вы возобновили участие',
                         reply_markup=create_active_user_keyboard()
                     )
+                else:
+                    await callback_query.answer("Вы уже активны.", show_alert=True)
 
-            elif callback_query.data == "confirm_no":
-                await callback_query.answer(
-                    'Вы решили не изменять статус участия', show_alert=True
-                )
+            elif callback_query.data == "confirm_activate_no":
+                await callback_query.answer('Вы решили не изменять статус участия', show_alert=True)
 
-            # Уведомляем Telegram о том, что запрос обработан
             await callback_query.answer()
 
         except Exception as e:
             print(f"Произошла ошибка: {e}")
-            await callback_query.answer(
-                "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
-                show_alert=True
-            )
+            await callback_query.answer("Произошла ошибка. Пожалуйста, попробуйте еще раз.", show_alert=True)
 
 
 @user_router.message(Command(commands='clean'),

@@ -76,7 +76,13 @@ KEYBOARD_BUTTON_TEXTS = {
     'button_list_participants': '📋 Список участников',
     'button_participant_management': '👥 Управление участниками',
     'button_google_sheets': '📊 Выгрузить в гугл таблицу',
-    'button_change_interval': '🤝 Изменить интервал'
+    'button_change_interval': '🤝 Изменить интервал',
+    'button_change_my_details': '✏️ Изменить мои данные',
+    'button_my_status': '📊 Мой статус участия',
+    'button_edit_meetings': '🗓️ Изменить частоту встреч',
+    'button_stop_participation': '⏸️ Приостановить участие',
+    'button_how_it_works': '❓ Как работает Random Coffee?',
+    'button_resume_participation': '▶️ Возобновить участие',
 }
 
 INLINE_BUTTON_TEXTS = {
