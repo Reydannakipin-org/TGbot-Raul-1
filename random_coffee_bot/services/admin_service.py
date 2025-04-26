@@ -4,11 +4,12 @@ from typing import Optional, Sequence
 
 import asyncio
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 
-from database.models import Setting, User
-from utils.google_sheets import users_sheet
+from database.models import Feedback, Pair, Setting, User
+from utils.google_sheets import pairs_sheet, users_sheet
 from texts import ADMIN_TEXTS, INTERVAL_TEXTS
 from services.user_service import get_user_by_telegram_id
 
@@ -199,7 +200,7 @@ async def export_users_to_gsheet(
 
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, worksheet.clear)
-    headers = ['telegram_id', 'Имя', 'Фамилия', 'Статус', 'Наличие разрешения',
+    headers = ['telegram_id', 'Имя', 'Фамилия', 'Активен?', 'Есть разрешение?',
                'Интервал', 'На паузе до', 'Дата присоединения']
     await loop.run_in_executor(None, worksheet.append_row, headers)
 
@@ -220,3 +221,85 @@ async def export_users_to_gsheet(
         await loop.run_in_executor(None, worksheet.append_row, row)
 
     return len(users)
+
+
+async def get_all_pairs(session: AsyncSession) -> Sequence[Pair]:
+    """
+    Извлекает из БД всех пользователей, сортирует по дате присоединения.
+    """
+    try:
+        result = await session.execute(
+            select(Pair)
+            .options(
+                selectinload(Pair.user1),
+                selectinload(Pair.user2),
+                selectinload(Pair.feedbacks).selectinload(Feedback.user)
+            ).order_by(Pair.paired_at.desc())
+        )
+        pairs = result.scalars().all()
+        return pairs
+
+    except SQLAlchemyError as e:
+        await session.rollback()
+        raise e
+
+
+async def export_pairs_to_gsheet(
+    session: AsyncSession
+) -> int:
+    """
+    Берёт всех пользователей из БД и записывает их в Гугл Таблицу.
+    Возвращает число отправленных строк.
+    """
+    pairs = await get_all_pairs(session)
+    worksheet = pairs_sheet
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, worksheet.clear)
+    headers = ['Дата', 'Коллега 1', 'Была встреча?', 'Коммент',
+               'Коллега 2', 'Была встреча?', 'Коммент']
+    await loop.run_in_executor(None, worksheet.append_row, headers)
+
+    def get_full_name(u):
+        return " ".join(filter(None, (u.first_name, u.last_name)))
+
+    def get_feedback_data(fb: Feedback | None) -> tuple[str, str]:
+        if fb is None:
+            return ('', '')
+        met = 'да' if fb.did_meet else 'нет'
+        comment = fb.comment or '-'
+        return (met, comment)
+
+    for p in pairs:
+        pairing_date = p.paired_at.strftime("%d.%m.%Y")
+        fb_by_user = {fb.user_id: fb for fb in p.feedbacks}
+        u1_full_name = get_full_name(p.user1)
+        fb1 = fb_by_user.get(p.user1_id)
+        u1_did_met, u1_comment = get_feedback_data(fb1)
+        u2_full_name = get_full_name(p.user2)
+        fb2 = fb_by_user.get(p.user2_id)
+        u2_did_met, u2_comment = get_feedback_data(fb2)
+        row = [pairing_date, u1_full_name, u1_did_met, u1_comment,
+               u2_full_name, u2_did_met, u2_comment]
+        await loop.run_in_executor(None, worksheet.append_row, row)
+
+    return len(pairs)
+
+
+# Служеюная на время разработки
+async def create_pair(session: AsyncSession,
+                      user1_id: int,
+                      user2_id: int) -> Pair:
+    '''Создает пару. Возвращает экземпляр пары.'''
+    pair = Pair(
+                user1_id=user1_id,
+                user2_id=user2_id
+            )
+    session.add(pair)
+    try:
+        await session.commit()
+        await session.refresh(pair)
+        return pair
+    except SQLAlchemyError as e:
+        await session.rollback()
+        raise e

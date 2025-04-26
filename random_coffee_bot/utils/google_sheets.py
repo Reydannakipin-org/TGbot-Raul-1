@@ -1,19 +1,20 @@
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# Области доступа
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+from config import load_config
 
-# Авторизация по JSON-ключу
+
+config = load_config()
+
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+
 creds = ServiceAccountCredentials.from_json_keyfile_name(
     'random_coffee_bot/credentials.json', scopes=SCOPES
 )
 gc = gspread.authorize(creds)
 
-# Открываем таблицу по ключу (ID в URL)
-SPREADSHEET_ID = "1IhMyK45CFC4XTaSfZ-b2hXwdNSZgxzzquLTDODLD9KU"
-sh = gc.open_by_key(SPREADSHEET_ID)
+SHEET_ID = config.g_sheet.sheet_id
+sh = gc.open_by_key(SHEET_ID)
 
-# Выбираем лист
-users_sheet = sh.worksheet("users")
-pais_sheet = sh.worksheet("pairs")
+users_sheet = sh.worksheet('users')
+pairs_sheet = sh.worksheet('pairs')

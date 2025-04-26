@@ -22,7 +22,8 @@ from keyboards.admin_buttons import (buttons_kb_admin,
                                      generate_inline_confirm_permission_false,
                                      generate_inline_confirm_permission_true,
                                      generate_inline_interval_options)
-from services.admin_service import (create_text_about_user,
+from services.admin_service import (create_pair,
+                                    create_text_about_user,
                                     create_text_with_interval,
                                     create_text_with_full_name,
                                     create_text_with_full_name_date,
@@ -31,6 +32,7 @@ from services.admin_service import (create_text_about_user,
                                     set_new_global_interval,
                                     set_user_permission,
                                     set_user_puase_until,
+                                    export_pairs_to_gsheet,
                                     export_users_to_gsheet)
 from services.user_service import get_user_by_telegram_id
 from states.admin_states import FSMAdminPanel
@@ -498,13 +500,18 @@ async def process_contact_command(message: Message):
     await message.answer(text=text, parse_mode='HTML')
 
 
-@admin_router.message(Command("export"), StateFilter(default_state))
-async def process_export_users_to_gsheet(message: Message):
-    await message.answer("⌛️ Начинаю экспорт данных в таблицу users…")
+@admin_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_google_sheets'],
+                      StateFilter(default_state))
+async def process_export_users_to_gsheet(message: Message, google_sheet_id):
+    '''
+    Хэндлер срабатывает при нажатии на кнопку клавиатуры "Выгрузить в
+    гугл таблицу". Делает экспорт данных и отправляет админу ссылку на таблицу.
+    '''
+    await message.answer(ADMIN_TEXTS['start_export_data'])
 
     try:
         async with AsyncSessionLocal() as session:
-            count = await export_users_to_gsheet(session)
+            await export_pairs_to_gsheet(session)
 
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
@@ -514,23 +521,45 @@ async def process_export_users_to_gsheet(message: Message):
                              'Проверьте SPREADSHEET_ID и доступы.')
     except WorksheetNotFound:
         await message.answer('❌ Лист с таким именем не найден. '
-                             'Проверьте имя листа в коде.')
+                             'Проверьте, чтобы имя листа соответсвовало '
+                             'инструкции разработчиков.')
     except APIError as e:
-        # e.response.json() может дать подробности от Google API
         await message.answer(f'❌ Ошибка API Google Sheets: '
                              f'{e.response.status_code} — {e.response.reason}')
     except HttpAccessTokenRefreshError:
         await message.answer('❌ Не удалось обновить токен доступа. Проверьте '
                              'credentials.json и права сервис-аккаунта.')
     except Exception as e:
-        # на всякий случай ловим всё остальное
         await message.answer(f'❌ Неожиданная ошибка при записи в Google '
                              f'Sheets:\n{e}')
     else:
-        # 4) Отвечаем пользователю
+        text = ADMIN_TEXTS['success_export_data'].format(
+            google_sheet_id=google_sheet_id)
         await message.answer(
-            f'✅ Экспорт таблицы users завершён: {count} строк отправлено.'
+            text=text, parse_mode='HTML'
         )
+
+# Служебная команда на время разработки
+@admin_router.message(Command(commands='pair'))
+async def process_create_pair(message: Message):
+    user1_id = 2
+    user2_id = 3
+
+    try:
+        async with AsyncSessionLocal() as session:
+            pair = await create_pair(session, user1_id, user2_id)
+
+            if pair is None:
+                logger.info('Не получилось создать пару')
+                await message.answer('Не получилось создать пару.')
+                return
+            else:
+                logger.info('Пара создана.')
+                await message.answer('Пара создана')
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+
 
 
 @admin_router.message(F.text)

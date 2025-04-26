@@ -90,6 +90,8 @@ ADMIN_TEXTS = {
     'choose_interval': 'Выберите новую частоту встреч.',
     'success_new_interval': 'Установлена новая частота встреч: {interval}.\nСледующая встреча запланирована на {next_pairing_date}',
     'cancel_changing_interval': 'Оставлена прежняя частота встреч: {interval}. Следующая встреча запланирована на {next_pairing_date}',
+    'start_export_data': '⌛️ Начинаю экспорт данных…',
+    'success_export_data': '✅ Экспорт завершён. <a href="https://docs.google.com/spreadsheets/d/{google_sheet_id}">Ссылка на таблицу</a>',
 }
 
 INTERVAL_TEXTS = {
