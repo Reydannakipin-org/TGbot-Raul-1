@@ -28,18 +28,6 @@ button_how_it_works_inactive = KeyboardButton(
 )
 
 
-# def create_confirmation_keyboard():
-#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#         [InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['yes'],
-#                               callback_data="confirm_yes"
-#                               ),
-#          InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['no'],
-#                               callback_data="confirm_no"
-#                               )]
-#     ])
-#     return keyboard
-
-
 def create_deactivate_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['yes'],
@@ -62,8 +50,6 @@ def create_activate_keyboard():
                               )]
     ])
     return keyboard
-
-
 
 
 # Функция для создания клавиатуры для активных пользователей

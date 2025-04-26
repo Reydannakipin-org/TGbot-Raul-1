@@ -319,7 +319,9 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
         user = await get_user_by_telegram_id(session, telegram_id)
 
         if user is None:
-            await callback_query.answer("Пользователь не найден.", show_alert=True)
+            await callback_query.answer(
+                "Пользователь не найден.", show_alert=True
+            )
             return
 
         try:
@@ -333,16 +335,25 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
                         reply_markup=create_inactive_user_keyboard()
                     )
                 else:
-                    await callback_query.answer("Вы уже приостановили участие.", show_alert=True)
+                    await callback_query.answer(
+                        "Вы уже приостановили участие.",
+                        show_alert=True
+                    )
 
             elif callback_query.data == "confirm_deactivate_no":
-                await callback_query.answer('Вы решили не изменять статус участия', show_alert=True)
+                await callback_query.answer(
+                    'Вы решили не изменять статус участия',
+                    show_alert=True
+                )
 
             await callback_query.answer()
 
         except Exception as e:
             print(f"Произошла ошибка: {e}")
-            await callback_query.answer("Произошла ошибка. Пожалуйста, попробуйте еще раз.", show_alert=True)
+            await callback_query.answer(
+                "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
+                show_alert=True
+            )
 
 
 @user_router.callback_query(lambda c: c.data.startswith("confirm_activate_"),
@@ -355,7 +366,10 @@ async def process_activate_confirmation(callback_query: CallbackQuery):
         user = await get_user_by_telegram_id(session, telegram_id)
 
         if user is None:
-            await callback_query.answer("Пользователь не найден.", show_alert=True)
+            await callback_query.answer(
+                "Пользователь не найден.",
+                show_alert=True
+            )
             return
 
         try:
@@ -369,16 +383,25 @@ async def process_activate_confirmation(callback_query: CallbackQuery):
                         reply_markup=create_active_user_keyboard()
                     )
                 else:
-                    await callback_query.answer("Вы уже активны.", show_alert=True)
+                    await callback_query.answer(
+                        "Вы уже активны.",
+                        show_alert=True
+                    )
 
             elif callback_query.data == "confirm_activate_no":
-                await callback_query.answer('Вы решили не изменять статус участия', show_alert=True)
+                await callback_query.answer(
+                    'Вы решили не изменять статус участия',
+                    show_alert=True
+                )
 
             await callback_query.answer()
 
         except Exception as e:
             print(f"Произошла ошибка: {e}")
-            await callback_query.answer("Произошла ошибка. Пожалуйста, попробуйте еще раз.", show_alert=True)
+            await callback_query.answer(
+                "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
+                show_alert=True
+            )
 
 
 @user_router.message(Command(commands='clean'),
