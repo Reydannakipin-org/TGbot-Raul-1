@@ -41,7 +41,7 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(user_router)
     #setup_scheduler(session_maker, bot)
-    schedule_feedback_jobs(bot, session_maker, dp)
+    await schedule_feedback_jobs(bot, session_maker, dp)
 
     await dp.start_polling(bot)
 

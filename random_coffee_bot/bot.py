@@ -17,6 +17,7 @@ import asyncio
 from aiogram import Dispatcher
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.job import Job
 
 scheduler = AsyncIOScheduler()
 
@@ -284,36 +285,48 @@ async def start_feedback_prompt(bot: Bot, telegram_id: int, dispatcher: Dispatch
 
     await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
 
-def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
+def show_next_runs(scheduler: AsyncIOScheduler):
+    print("🔔 Расписание ближайших запусков задач:")
+
+    for job in scheduler.get_jobs():
+        next_run = job.next_run_time
+        print(f"🛠 Задача '{job.id}' запустится в: {next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else 'нет запланированного запуска'}")
+
+async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
     async def setup_jobs():
-        # Сначала создаем задачу для отправки напоминаний (каждые 60 секунд для тестов)
         async with session_maker() as session:
+            setting_result = await session.execute(
+                select(Setting.value).where(Setting.key == "global_interval")
+            )
+            setting_value = setting_result.scalar()
+            interval_weeks = setting_value if setting_value is not None else 2
+            interval_day = interval_weeks * 7 -3
             users_result = await session.execute(select(User.telegram_id).where(User.is_active == True))
             telegram_ids = users_result.scalars().all()
 
             for telegram_id in telegram_ids:
-                # Напоминания отправляются каждые 60 секунд (это для теста)
                 scheduler.add_job(
                     start_feedback_prompt,
-                    trigger=IntervalTrigger(seconds=10),  # можешь изменить на нужный интервал
+                    trigger=IntervalTrigger(days=interval_day),
                     args=[bot, telegram_id, dispatcher],
                     id=f"feedback_{telegram_id}",
                     replace_existing=True,
                 )
 
-        # Создаем задачу для формирования пар (каждую неделю по понедельникам)
         scheduler.add_job(
             auto_pairing,
-            #CronTrigger(day_of_week="mon", hour=10, minute=0),
-            trigger=IntervalTrigger(seconds=50),# Каждую неделю в понедельник в 10:00
+            trigger=IntervalTrigger(weeks=interval_weeks),
             args=[session_maker, bot],
             id="auto_pairing_weekly"
         )
 
-    # Запускаем задачу setup_jobs в фоновом режиме
-    asyncio.create_task(setup_jobs())
+    # ⬇⬇⬇ Ждем выполнения setup_jobs перед стартом планировщика
+    await setup_jobs()
 
-    # Проверяем, запущен ли планировщик
+    # Теперь можно запускать планировщик и печатать расписание
     if not scheduler.running:
         scheduler.start()
+
+    show_next_runs(scheduler)
+
 
