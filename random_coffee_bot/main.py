@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from config import Config, load_config
 from handlers.admin_handlers import admin_router
 from handlers.users_handlers import user_router
-from middlewares import GroupMemberMiddleware
+from middlewares import AccessMiddleware
 
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ async def main():
     # Из переменной config можно получить переменные окружения в текущем файле.
     config: Config = load_config()
     group_tg_id = config.tg_bot.group_tg_id
+    admin_id = config.tg_bot.admin_tg_id
 
     engine = create_async_engine(config.db.db_url, echo=False)
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
@@ -34,13 +35,17 @@ async def main():
     dp = Dispatcher()
     dp.workflow_data.update({
         'group_tg_id': group_tg_id,
-        'session': session_maker
+        'session': session_maker,
+        'admin_id': admin_id
     })
 
-    dp.update.middleware(GroupMemberMiddleware())
+    dp.update.middleware(AccessMiddleware())
     dp.include_router(admin_router)
     dp.include_router(user_router)
+
+
     await schedule_feedback_jobs(bot, session_maker, dp)
+    await dp.start_polling(bot)
 
     await dp.start_polling(bot)
 

@@ -28,7 +28,7 @@ class User(CommonMixin, Base):
     last_name = Column(String, nullable=True)
 
     is_active = Column(Boolean, default=True, nullable=False)
-    is_in_group = Column(Boolean, default=True, nullable=False)
+    has_permission = Column(Boolean, default=True, nullable=False)
     is_blocked = Column(Boolean, default=False, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
 
