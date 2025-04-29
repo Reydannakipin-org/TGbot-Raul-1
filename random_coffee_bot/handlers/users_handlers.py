@@ -1,6 +1,6 @@
 import logging
 
-from aiogram import F, Router
+from aiogram import F, Router, types
 from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup, default_state
@@ -26,6 +26,7 @@ from keyboards.user_buttons import (
     create_inactive_user_keyboard
 )
 
+from random_coffee_bot.states.user_states import FSMUserForm
 
 logger = logging.getLogger(__name__)
 
@@ -427,11 +428,11 @@ async def process_clean_keyboards(message: Message, state: FSMContext):
     await message.answer('Убираем клаву',
                          reply_markup=ReplyKeyboardRemove())
 
-
-@user_router.message(F.text)
-async def fallback_handler(message: Message):
-    await message.answer('Я не знаю такой команды. '
-                         'Пожалуйста, используй клавиатуру.')
+# пока дропнул так как она перехватывает текст для отправки коментария
+# @user_router.message(F.text)
+# async def fallback_handler(message: Message):
+#     await message.answer('Я не знаю такой команды. '
+#                          'Пожалуйста, используй клавиатуру.')
 
 
 class FeedbackStates(StatesGroup):
