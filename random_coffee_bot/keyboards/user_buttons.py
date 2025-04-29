@@ -1,7 +1,11 @@
 from aiogram.types import KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from texts import KEYBOARD_BUTTON_TEXTS, INLINE_BUTTON_TEXTS
+from texts import (KEYBOARD_BUTTON_TEXTS,
+                   INLINE_BUTTON_TEXTS,
+                   INTERVAL_TEXTS,
+                   USER_TEXTS,
+                   )
 
 button_change_my_details = KeyboardButton(
     text=KEYBOARD_BUTTON_TEXTS['button_change_my_details']
@@ -52,6 +56,21 @@ def create_activate_keyboard():
     return keyboard
 
 
+def generate_inline_confirm_change_interval():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['yes'],
+                callback_data=('confirm_changing_interval')
+            ),
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['no'],
+                callback_data=('cancel_changing_interval')
+            )
+        ]
+    ])
+
+
 # Функция для создания клавиатуры для активных пользователей
 def create_active_user_keyboard():
     buttons_kb_builder_user = ReplyKeyboardBuilder()
@@ -75,3 +94,32 @@ def create_inactive_user_keyboard():
         width=1
     )
     return buttons_kb_builder_user.as_markup(resize_keyboard=True)
+
+
+def generate_inline_interval():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=USER_TEXTS['admin_changing_interval'],
+                callback_data='change_interval'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=INTERVAL_TEXTS['2'],
+                callback_data=('new_interval:2')
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=INTERVAL_TEXTS['3'],
+                callback_data=('new_interval:3')
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=INTERVAL_TEXTS['4'],
+                callback_data=('new_interval:4')
+            )
+        ]
+    ])

@@ -65,10 +65,21 @@ ADMIN_TEXTS = {
         'отправив мне Telegram ID пользователя.'),
 }
 
+USER_TEXTS = {
+    'change_frequency': 'Хочешь изменить частоту встреч?',
+    'update_frequency': 'Выбери, как часто ты хочешь получать рассылку с именем коллеги.',
+    'user_confirm_changing_interval': ('Сейчас у тебя установлено участие: \n{your_interval}.\n\nДля остальных '
+                                  'участников я подбираю \nпару {their_interval}.\n\nХочешь изменить частоту встреч?'),
+    'admin_changing_interval': 'Как решит администратор (Сейчас это {admin_interval}.)',
+    'user_default_interval': 'Ты оставил преждюю частоту встреч: {current_interval}',
+    'success_new_interval': 'Установлена новая частота встреч: {your_interval}.'
+    
+}
+
 INTERVAL_TEXTS = {
-    '14': '1 раз в 2 недели',
-    '21': '1 раз в 3 недели',
-    '28': '1 раз в 4 недели',
+    '2': '1 раз в 2 недели',
+    '3': '1 раз в 3 недели',
+    '4': '1 раз в 4 недели',
     'default': 'по умолчанию'
 }
 
@@ -88,7 +99,7 @@ KEYBOARD_BUTTON_TEXTS = {
 INLINE_BUTTON_TEXTS = {
     'yes': 'Да',
     'no': 'Нет',
-    'set_has_permission_false': 'Запретить пользоваться ботом',
+    'set_has_permission_false': 'Запретить полurrent_intervalьзоваться ботом',
     'set_has_permission_true': 'Разрешить пользоваться ботом',
     'set_pause': 'Поставить на паузу',
     'cancel': 'Отменить'

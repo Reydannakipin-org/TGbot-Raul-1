@@ -9,18 +9,23 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from database.db import AsyncSessionLocal
 from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
-from texts import TEXTS
+from texts import TEXTS, KEYBOARD_BUTTON_TEXTS, USER_TEXTS, ADMIN_TEXTS
 from services.user_service import (create_user,
                                    delete_user,
                                    get_user_by_telegram_id,
                                    set_user_active,
-                                   update_user_field)
+                                   update_user_field,
+                                   create_text_with_interval,
+                                   set_new_global_interval,
+                                   parse_callback_data,)
 from states.user_states import FSMUserForm
 from keyboards.user_buttons import (
     create_active_user_keyboard,
     create_activate_keyboard,
     create_deactivate_keyboard,
-    create_inactive_user_keyboard
+    create_inactive_user_keyboard,
+    generate_inline_confirm_change_interval,
+    generate_inline_interval,
 )
 
 
@@ -262,7 +267,9 @@ async def process_user(message: Message):
 
 
 @user_router.message(
-    lambda message: message.text == "⏸️ Приостановить участие",
+    F.text == KEYBOARD_BUTTON_TEXTS[
+        'button_stop_participation'
+    ],
     StateFilter(default_state)
 )
 async def pause_participation(message: Message, state: FSMContext):
@@ -290,11 +297,15 @@ async def pause_participation(message: Message, state: FSMContext):
         await message.answer("Вы уже неактивны.")
 
 
-@user_router.message(lambda message: message.text == "▶️ Возобновить участие",
-                     StateFilter(default_state)
-                     )
+@user_router.message(F.text == KEYBOARD_BUTTON_TEXTS[
+    'button_resume_participation'
+    ],
+    StateFilter(default_state)
+)
 async def resume_participation(message: Message, state: FSMContext):
-    """Хэндлер для возобновления участия пользователя."""
+    """
+    Хэндлер для возобновления участия пользователя.
+    """
     telegram_id = message.from_user.id
 
     async with AsyncSessionLocal() as session:
@@ -414,7 +425,104 @@ async def process_clean_keyboards(message: Message, state: FSMContext):
                          reply_markup=ReplyKeyboardRemove())
 
 
+@user_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_edit_meetings'],
+                     StateFilter(default_state))
+async def process_frequency(message: Message):
+    try:
+        async with AsyncSessionLocal() as session:
+            user_id = message.from_user.id  # Получаем ID пользователя
+            data_text = await create_text_with_interval(
+                session, USER_TEXTS['user_confirm_changing_interval'], user_id
+            )
+
+            await message.answer(
+                text=data_text,
+                reply_markup=generate_inline_confirm_change_interval()
+            )
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('confirm_changing_interval'),
+    StateFilter(default_state)
+)
+async def handle_callback_query_yes(callback_query: CallbackQuery):
+    await callback_query.message.delete()
+    await callback_query.message.answer(
+        USER_TEXTS['update_frequency'],
+        reply_markup=generate_inline_interval()
+    )
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('new_interval:'),
+    StateFilter(default_state)
+)
+async def process_set_new_interval_user(callback: CallbackQuery):
+    '''
+    Хэндлер срабатывает на нажатии пользователем инлайн-кнопки
+    с выбором частоты встреч.
+    '''
+    _, new_interval = parse_callback_data(callback.data)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user_id = callback.from_user.id
+            await set_new_global_interval(session, new_interval)
+
+            data_text = await create_text_with_interval(
+                session, USER_TEXTS['success_new_interval'], user_id
+            )
+
+            if isinstance(callback.message, Message):
+                await callback.message.edit_text(text=data_text)
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных ')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('cancel_changing_interval')
+)
+async def handle_callback_query_no(callback_query: CallbackQuery):
+    await callback_query.message.delete()
+    await callback_query.message.answer(
+        text=USER_TEXTS['user_default_interval']
+    )
+
+
+#Хэндлер для тестов нужно будет удалить
+@user_router.message(Command(commands='interval'))
+async def set_interval_command(message: Message):
+    try:
+        # Устанавливаем новый интервал (например, 2)
+        new_interval = 4  # Замените на нужный вам интервал
+
+        async with AsyncSessionLocal() as session:
+            await set_new_global_interval(session, new_interval)
+
+        await message.answer(
+            f"Глобальный интервал успешно изменен на {new_interval}."
+        )
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+    except Exception as e:
+        logger.exception('Произошла ошибка при изменении интервала')
+        await message.answer(f"Произошла ошибка: {str(e)}")
+
+
 @user_router.message(F.text)
 async def fallback_handler(message: Message):
+    '''
+    Этот хэндлер должен быть самым последним,
+    так как он улавливает любую команду которую не смогли уловить
+    другие хэндлеры.
+    '''
     await message.answer('Я не знаю такой команды. '
                          'Пожалуйста, используй клавиатуру.')
