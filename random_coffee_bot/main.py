@@ -35,7 +35,7 @@ async def main():
     dp = Dispatcher()
     dp.workflow_data.update({
         'group_tg_id': group_tg_id,
-        'session': session_maker,
+        'session_maker': session_maker,
         'admin_id': admin_id
     })
 
@@ -47,7 +47,8 @@ async def main():
     await schedule_feedback_jobs(bot, session_maker, dp)
     await dp.start_polling(bot)
 
-    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+

@@ -5,12 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9666058e-16da-4588-b2b3-e30931dfb266" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/hatacon.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/hatacon.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/alembic/versions/831791f2ab61_change_user_model_has_permission_.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/alembic/versions/f40b17cec998_your_migration_message.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/bot.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/main.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -208,7 +206,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py</url>
-          <line>37</line>
+          <line>38</line>
           <option name="timeStamp" value="10" />
         </line-breakpoint>
       </breakpoints>

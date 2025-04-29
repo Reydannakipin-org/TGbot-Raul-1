@@ -2,6 +2,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED
 
+from oauth2client.service_account import ServiceAccountCredentials
+import gspread_asyncio
+
 from datetime import datetime
 from random import shuffle
 import random
@@ -331,5 +334,54 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
 
     show_next_runs(scheduler)
 
+# Гугл таблицы
+def get_creds():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    return ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 
-# написать функцию чтобы менять интервал когда бот запушен
+# Главная функция
+async def export_pairs_to_google_sheet(session, spreadsheet_name="pair"):
+    agcm = gspread_asyncio.AsyncioGspreadClientManager(get_creds)
+    agc = await agcm.authorize()
+
+    # Создание или подключение к таблице
+    try:
+        sh = await agc.open(spreadsheet_name)
+    except gspread_asyncio.gspread.exceptions.SpreadsheetNotFound:
+        sh = await agc.create(spreadsheet_name)
+
+    # Получаем или создаём первый лист
+    try:
+        worksheet = await sh.get_worksheet(0)
+    except Exception:
+        worksheet = await sh.add_worksheet(title="Sheet1", rows="100", cols="10")
+
+    await worksheet.clear()
+
+    # Заголовки
+    headers = ["ID пары", "Дата",
+                "User1 Username",
+                "User2 Username",
+                "User3 Username"]
+    await worksheet.append_row(headers)
+
+    # Получение данных из БД
+    result = await session.execute(select(Pair))
+    pairs = result.scalars().all()
+
+    rows = []
+    for pair in pairs:
+        rows.append([
+            pair.id,
+            pair.paired_at.strftime("%Y-%m-%d %H:%M:%S") if pair.paired_at else "",
+            #pair.user1_id,
+            pair.user1_username or "",
+            #pair.user2_id,
+            pair.user2_username or "",
+            #pair.user3_id or "",
+            pair.user3_username or ""
+        ])
+
+    # Добавление данных
+    await worksheet.append_rows(rows, value_input_option="RAW")
+    return f"https://docs.google.com/spreadsheets/d/{sh.id}"
