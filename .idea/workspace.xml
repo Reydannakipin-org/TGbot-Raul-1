@@ -7,6 +7,8 @@
     <list default="true" id="9666058e-16da-4588-b2b3-e30931dfb266" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/random_coffee_bot/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/bot.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/random_coffee_bot/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/main.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -195,11 +197,6 @@
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py</url>
-          <line>149</line>
-          <option name="timeStamp" value="3" />
-        </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py</url>
           <line>20</line>

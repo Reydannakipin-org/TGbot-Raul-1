@@ -1,23 +1,21 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from datetime import datetime, timedelta, date
+from apscheduler.events import EVENT_JOB_EXECUTED
+
+from datetime import datetime
 from random import shuffle
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from database.models import User, Pair, Setting, Feedback
-from aiogram import Bot
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 import random
 from collections import defaultdict
-from sqlalchemy.ext.asyncio import async_sessionmaker
+
 from sqlalchemy import select, or_
-from sqlalchemy.orm import selectinload
-import asyncio
-from aiogram import Dispatcher
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.job import Job
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from aiogram import Bot, Dispatcher
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from database.models import User, Pair, Setting, Feedback
 
 scheduler = AsyncIOScheduler()
 
@@ -292,6 +290,9 @@ def show_next_runs(scheduler: AsyncIOScheduler):
         next_run = job.next_run_time
         print(f"🛠 Задача '{job.id}' запустится в: {next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else 'нет запланированного запуска'}")
 
+def job_listener(event):
+    show_next_runs(scheduler)
+
 async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
     async def setup_jobs():
         async with session_maker() as session:
@@ -307,7 +308,7 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
             for telegram_id in telegram_ids:
                 scheduler.add_job(
                     start_feedback_prompt,
-                    trigger=IntervalTrigger(days=interval_day),
+                    trigger=IntervalTrigger(minutes=2),
                     args=[bot, telegram_id, dispatcher],
                     id=f"feedback_{telegram_id}",
                     replace_existing=True,
@@ -315,7 +316,7 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
 
         scheduler.add_job(
             auto_pairing,
-            trigger=IntervalTrigger(weeks=interval_weeks),
+            trigger=IntervalTrigger(minutes=2),
             args=[session_maker, bot],
             id="auto_pairing_weekly"
         )
@@ -325,8 +326,10 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
 
     # Теперь можно запускать планировщик и печатать расписание
     if not scheduler.running:
+        scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
         scheduler.start()
 
     show_next_runs(scheduler)
 
 
+# написать функцию чтобы менять интервал когда бот запушен
