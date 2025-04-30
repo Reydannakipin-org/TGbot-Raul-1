@@ -145,32 +145,77 @@ async def delete_user(session: AsyncSession, telegram_id: int) -> bool:
         raise e
 
 
-async def create_text_with_interval(
+async def create_text_with_default_interval_admin(
+    session: AsyncSession, text: str
+) -> str:
+    '''
+    Создает текст для описания кнопки:
+    Ты оставил прежнюю частоту встреч: интервал который стоит у админа
+    '''
+    admin_current_interval = await get_global_interval(session)
+
+    user_current_interval = admin_current_interval
+
+    user_key = str(user_current_interval)
+    user_interval_text = INTERVAL_TEXTS.get(user_key) if user_key else ADMIN_TEXTS['no_data']
+
+    data_text = text.format(
+        admin_interval=user_interval_text
+    )
+    # Используем текст из USER_TEXTS
+    return data_text
+
+
+async def create_text_with_default_interval(
     session: AsyncSession, text: str, user_id: int
 ) -> str:
+    '''
+    Создает текст для ответа, когда пользователь
+    передумал менять интервал встреч.
+    '''
     admin_current_interval = await get_global_interval(session)
     user_current_interval = await get_user_interval(session, user_id)
 
-    logger.info(f"Администратор - {admin_current_interval}, Пользователь - {user_current_interval}")
+    if user_current_interval is not None:
+        user_key = str(user_current_interval)
+        user_interval_text = INTERVAL_TEXTS.get(user_key) if user_key else ADMIN_TEXTS['no_data']
+    else:
+        user_current_interval = admin_current_interval
+        user_key = str(user_current_interval)
+        user_interval_text = INTERVAL_TEXTS.get(user_key) if user_key else ADMIN_TEXTS['no_data']
+
+    data_text = text.format(
+        current_interval=user_interval_text
+    )
+    return data_text
+
+
+async def create_text_with_interval(
+    session: AsyncSession, text: str, user_id: int
+) -> str:
+    '''
+    Создает текст для ответа когда пользоватеь
+    решил изменить интервал встчер.
+    '''
+    admin_current_interval = await get_global_interval(session)
+    user_current_interval = await get_user_interval(session, user_id)
+
 
     # Получаем текст для интервала администратора
-    admin_interval_text = INTERVAL_TEXTS.get(admin_current_interval) if admin_current_interval else ADMIN_TEXTS['no_data']
+    admin_interval_text = INTERVAL_TEXTS.get(str(admin_current_interval)) if admin_current_interval else ADMIN_TEXTS['no_data']
 
-    # Если у пользователя установлен свой интервал, используем его
     if user_current_interval is not None:
-        user_interval_text = INTERVAL_TEXTS.get(user_current_interval) if user_current_interval else ADMIN_TEXTS['no_data']
+        user_key = str(user_current_interval)
+        user_interval_text = INTERVAL_TEXTS.get(user_key) if user_key else ADMIN_TEXTS['no_data']
     else:
-        # Если у пользователя нет установленного интервала, используем интервал администратора
         user_current_interval = admin_current_interval
-        user_interval_text = admin_interval_text
+        user_key = str(user_current_interval)
+        user_interval_text = INTERVAL_TEXTS.get(user_key) if user_key else ADMIN_TEXTS['no_data']
 
     data_text = text.format(
         your_interval=user_interval_text,
         their_interval=admin_interval_text
     )
-
-    logger.info(f"Formatted text: {data_text}")
-
     return data_text
 
 
@@ -195,6 +240,39 @@ async def get_user_interval(
     )
 
     return result.scalar()
+
+
+async def set_new_user_interval(
+    session: AsyncSession, user_id: int, new_value: int
+) -> None:
+    '''
+    Изменяет значение интервала для конкретного пользователя в таблице users.
+    '''
+    logger.info(f"Попытка установить новый pairing_interval: {new_value} для пользователя с id {user_id}")
+
+    try:
+        updated_user_result = await session.execute(
+            select(User).where(User.telegram_id == user_id)
+        )
+        updated_user = updated_user_result.scalars().first()
+
+        if updated_user is None:
+            logger.warning(f'Пользователь с id {user_id} не найден')
+            raise ValueError(f'Пользователь с id {user_id} не найден')
+
+        logger.info(f"Обновлённое значение pairing_interval для пользователя до изменения: {updated_user.pairing_interval}")
+
+        updated_user.pairing_interval = new_value  # Обновляем значение
+        await session.commit()  # Коммит изменений
+
+        logger.info(f'pairing_interval для пользователя с id {user_id} обновлён на {new_value}')
+
+    except SQLAlchemyError as e:
+        await session.rollback()  # Откат в случае ошибки
+        logger.exception(
+            'Ошибка при установке нового интервала для пользователя'
+        )
+        raise e
 
 
 #Временно нужно будет удалить

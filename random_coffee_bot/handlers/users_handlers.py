@@ -17,7 +17,10 @@ from services.user_service import (create_user,
                                    update_user_field,
                                    create_text_with_interval,
                                    set_new_global_interval,
-                                   parse_callback_data,)
+                                   parse_callback_data,
+                                   set_new_user_interval,
+                                   create_text_with_default_interval,
+                                   )
 from states.user_states import FSMUserForm
 from keyboards.user_buttons import (
     create_active_user_keyboard,
@@ -467,11 +470,10 @@ async def process_set_new_interval_user(callback: CallbackQuery):
     с выбором частоты встреч.
     '''
     _, new_interval = parse_callback_data(callback.data)
-
     try:
         async with AsyncSessionLocal() as session:
             user_id = callback.from_user.id
-            await set_new_global_interval(session, new_interval)
+            await set_new_user_interval(session, user_id, new_interval)
 
             data_text = await create_text_with_interval(
                 session, USER_TEXTS['success_new_interval'], user_id
@@ -488,11 +490,14 @@ async def process_set_new_interval_user(callback: CallbackQuery):
 @user_router.callback_query(
     lambda c: c.data.startswith('cancel_changing_interval')
 )
-async def handle_callback_query_no(callback_query: CallbackQuery):
-    await callback_query.message.delete()
-    await callback_query.message.answer(
-        text=USER_TEXTS['user_default_interval']
-    )
+async def handle_callback_query_no(callback: CallbackQuery):
+    async with AsyncSessionLocal() as session:
+        user_id = callback.from_user.id
+        data_text = await create_text_with_default_interval(
+            session, USER_TEXTS['user_default_interval'], user_id
+        )
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(text=data_text)
 
 
 #Хэндлер для тестов нужно будет удалить
