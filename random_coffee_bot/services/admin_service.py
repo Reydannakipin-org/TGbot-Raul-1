@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Optional, Sequence
 
 import asyncio
@@ -9,26 +9,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.models import Feedback, Pair, Setting, User
-from utils.google_sheets import pairs_sheet, users_sheet
-from texts import ADMIN_TEXTS, INTERVAL_TEXTS
+from services.constants import DATE_FORMAT
 from services.user_service import get_user_by_telegram_id
+from texts import ADMIN_TEXTS, INTERVAL_TEXTS
+from utils.google_sheets import pairs_sheet, users_sheet
 
 
 logger = logging.getLogger(__name__)
 
 
 async def set_user_permission(session: AsyncSession,
-                              telegram_id: int,
+                              user: User,
                               has_permission: bool
                               ) -> bool:
-    '''
+    """
     Изменяет значение флага has_permission.
     Возвращает True, если пользователь найден и обновлен.
-    '''
+    """
     try:
-        user = await get_user_by_telegram_id(session, telegram_id)
-        if not user:
-            return False
         user.has_permission = has_permission
         if not has_permission:
             user.is_active = False
@@ -36,66 +34,62 @@ async def set_user_permission(session: AsyncSession,
         return True
     except SQLAlchemyError as e:
         await session.rollback()
+        logger.exception(f'Ошибка при обновлении пользователя '
+                         f'{user.telegram_id}')
         raise e
 
 
-async def set_user_puase_until(session: AsyncSession,
-                               telegram_id: int,
+async def set_user_pause_until(session: AsyncSession,
+                               user: User,
                                input_date: date
                                ) -> bool:
-    '''Изменяет значение флага has_permission.
-    Возвращает True, если пользователь найден и обновлен.'''
+    """
+    Изменяет значение флага has_permission.
+    Возвращает True, если пользователь найден и обновлен.
+    """
     try:
-        user = await get_user_by_telegram_id(session, telegram_id)
-        if not user:
-            return False
         user.pause_until = input_date
         await session.commit()
         return True
     except SQLAlchemyError as e:
         await session.rollback()
+        logger.exception(f'Ошибка при обновлении пользователя '
+                         f'{user.telegram_id}')
         raise e
 
 
-def create_text_about_user(user: User):
-    data_text = ADMIN_TEXTS['finding_user_success'].format(
-        first_name=user.first_name or ADMIN_TEXTS['no_data'],
-        last_name=user.last_name or ADMIN_TEXTS['no_data'],
-        status=(ADMIN_TEXTS['status_active_true'] if user.is_active
-                else ADMIN_TEXTS['status_active_false']),
-        permission=(ADMIN_TEXTS['has_permission_true'] if user.has_permission
-                    else ADMIN_TEXTS['has_permission_false']),
-        interval=(INTERVAL_TEXTS['default'] if not user.pairing_interval
-                  else INTERVAL_TEXTS[str(user.pairing_interval)]),
-        pause=(user.pause_until.strftime("%d.%m.%Y") if user.pause_until
-               else ADMIN_TEXTS['no_settings'])
-    )
-    return data_text
+def format_text_about_user(template: str,   user: User,
+                           extra_fields: Optional[dict[str, str]] = None
+                           ) -> str:
+    """
+    Форматирует текст на основе шаблона и атрибутов пользователя.
+    """
+    data = {
+        'first_name': user.first_name or ADMIN_TEXTS['no_data'],
+        'last_name': user.last_name or '',
+        'status': (ADMIN_TEXTS['status_active_true'] if user.is_active
+                   else ADMIN_TEXTS['status_active_false']),
+        'permission': (ADMIN_TEXTS['has_permission_true']
+                       if user.has_permission
+                       else ADMIN_TEXTS['has_permission_false']),
+        'interval': (INTERVAL_TEXTS[str(user.pairing_interval)]
+                     if user.pairing_interval
+                     else INTERVAL_TEXTS['default']),
+        'pause_until': (user.pause_until.strftime(DATE_FORMAT)
+                        if user.pause_until else ADMIN_TEXTS['no_settings']),
+    }
+    if extra_fields:
+        data.update(extra_fields)
+    return template.format(**data)
 
 
-def create_text_with_full_name(text: str, user: User):
-    data_text = text.format(
-        first_name=user.first_name or ADMIN_TEXTS['no_data'],
-        last_name=user.last_name or '')
-    return data_text
-
-
-def create_text_with_full_name_date(text: str, user: User):
-    data_text = text.format(
-        first_name=user.first_name or ADMIN_TEXTS['no_data'],
-        last_name=user.last_name or '',
-        date=user.pause_until.strftime("%d.%m.%Y") or ADMIN_TEXTS['no_data'])
-    return data_text
-
-
-async def create_text_with_interval(session: AsyncSession, text: str):
-    '''
+def create_text_with_interval(text: str,
+                              current_interval: Optional[str],
+                              next_pairing_date: Optional[date]) -> str:
+    """
     Подставляет значения для переменных interval и next_pairing_date
     в полученном тексте.
-    '''
-    current_interval: Optional[str] = await get_global_interval(session)
-    next_pairing_date = get_next_pairing_date()
-
+    """
     if current_interval is None:
         interval_text = ADMIN_TEXTS['no_data']
     else:
@@ -103,7 +97,7 @@ async def create_text_with_interval(session: AsyncSession, text: str):
                                            INTERVAL_TEXTS['default'])
 
     if next_pairing_date:
-        date_text = next_pairing_date.strftime("%d.%m.%Y")
+        date_text = next_pairing_date.strftime(DATE_FORMAT)
     else:
         date_text = ADMIN_TEXTS['unknown']
 
@@ -114,8 +108,11 @@ async def create_text_with_interval(session: AsyncSession, text: str):
 
 
 def is_valid_date(txt: str) -> bool:
+    """
+    Проверяет, являются ли данные из строки датой в нужном формате.
+    """
     try:
-        datetime.strptime(txt, "%d.%m.%Y")
+        datetime.strptime(txt, DATE_FORMAT)
         return True
     except ValueError:
         return False
@@ -123,7 +120,7 @@ def is_valid_date(txt: str) -> bool:
 
 def parse_callback_data(data: str) -> tuple[str, str]:
     """
-    Разбирает callback.data в формате 'action:us' и возвращает
+    Разбирает callback.data в формате 'action:param' и возвращает
     кортеж (action, param).
     """
     try:
@@ -135,40 +132,48 @@ def parse_callback_data(data: str) -> tuple[str, str]:
 
 
 async def get_global_interval(session: AsyncSession) -> Optional[str]:
-    '''
+    """
     Возвращает из базы данных значение глобального интервала.
-    '''
+    """
     result = await session.execute(
-        select(Setting.value).where(Setting.key == "global_interval")
+        select(Setting.value).where(Setting.key == 'global_interval')
     )
     return result.scalar()
 
 
 async def set_new_global_interval(session: AsyncSession, new_value: int
-                                  ) -> None:
-    '''
+                                  ) -> str:
+    """
     Изменяет значение глобального интервала в таблице settings.
     Возвращает True, если интервал обновлен.
-    '''
+    """
     try:
         result = await session.execute(
-            select(Setting).where(Setting.key == "global_interval")
+            select(Setting).where(Setting.key == 'global_interval')
         )
-        setting = result.scalars().first()
+        current_interval = result.scalars().first()
 
-        if setting:
-            setting.value = new_value
+        if current_interval:
+            current_interval.value = new_value
         else:
-            setting = Setting(key="global_interval", value=new_value)
-            session.add(setting)
+            current_interval = Setting(key='global_interval', value=new_value)
+            session.add(current_interval)
 
         await session.commit()
+        logger.info(f'Установленный интервал {current_interval}')
+        return current_interval.value
     except SQLAlchemyError as e:
         await session.rollback()
+        logger.exception('Ошибка при установке нового интервала')
         raise e
 
 
 def get_next_pairing_date() -> Optional[date]:
+    """
+    Возвращает дату, когда состоится следующее формирование пар
+    согласно планировщику задач.
+    """
+    # TODO
     return None
 
 
@@ -185,6 +190,7 @@ async def get_all_users(session: AsyncSession) -> Sequence[User]:
 
     except SQLAlchemyError as e:
         await session.rollback()
+        logger.exception('Ошибка при получении из БД всех пользователей.')
         raise e
 
 
@@ -195,14 +201,15 @@ async def export_users_to_gsheet(
     Берёт всех пользователей из БД и записывает их в Гугл Таблицу.
     Возвращает число отправленных строк.
     """
+    logger.info('Начниаем экспорт юзеров.')
     users = await get_all_users(session)
     worksheet = users_sheet
-
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, worksheet.clear)
+
+    rows: list[list[str]] = []
     headers = ['telegram_id', 'Имя', 'Фамилия', 'Активен?', 'Есть разрешение?',
                'Интервал', 'На паузе до', 'Дата присоединения']
-    await loop.run_in_executor(None, worksheet.append_row, headers)
+    rows.append(headers)
 
     for u in users:
         telegram_id = u.telegram_id
@@ -212,13 +219,17 @@ async def export_users_to_gsheet(
         has_permission = 'да' if u.has_permission else 'нет'
         pairing_interval = (INTERVAL_TEXTS['default'] if not u.pairing_interval
                             else INTERVAL_TEXTS[str(u.pairing_interval)])
-        pause_until = (u.pause_until.strftime("%d.%m.%Y") if u.pause_until
+        pause_until = (u.pause_until.strftime(DATE_FORMAT) if u.pause_until
                        else '')
-        joined_at = u.joined_at.strftime("%d.%m.%Y")
+        joined_at = u.joined_at.strftime(DATE_FORMAT)
 
-        row = [telegram_id, first_name, last_name, is_active, has_permission,
-               pairing_interval, pause_until, joined_at]
-        await loop.run_in_executor(None, worksheet.append_row, row)
+        rows.append([telegram_id, first_name, last_name, is_active,
+                     has_permission, pairing_interval, pause_until, joined_at])
+    logger.info(f'Сформировано строк {len(rows)-1}')
+
+    await loop.run_in_executor(None, worksheet.clear)
+    await loop.run_in_executor(None, worksheet.append_rows, rows)
+    logger.info('Таблица юзеров экспортирована.')
 
     return len(users)
 
@@ -241,6 +252,7 @@ async def get_all_pairs(session: AsyncSession) -> Sequence[Pair]:
 
     except SQLAlchemyError as e:
         await session.rollback()
+        logger.exception('Ошибка при получении из БД всех пар.')
         raise e
 
 
@@ -251,17 +263,15 @@ async def export_pairs_to_gsheet(
     Берёт всех пользователей из БД и записывает их в Гугл Таблицу.
     Возвращает число отправленных строк.
     """
+    logger.info('Начинаем экспорт пар и отзывов.')
     pairs = await get_all_pairs(session)
     worksheet = pairs_sheet
-
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, worksheet.clear)
+
+    rows: list[list[str]] = []
     headers = ['Дата', 'Коллега 1', 'Была встреча?', 'Коммент',
                'Коллега 2', 'Была встреча?', 'Коммент']
-    await loop.run_in_executor(None, worksheet.append_row, headers)
-
-    def get_full_name(u):
-        return " ".join(filter(None, (u.first_name, u.last_name)))
+    rows.append(headers)
 
     def get_feedback_data(fb: Feedback | None) -> tuple[str, str]:
         if fb is None:
@@ -271,26 +281,31 @@ async def export_pairs_to_gsheet(
         return (met, comment)
 
     for p in pairs:
-        pairing_date = p.paired_at.strftime("%d.%m.%Y")
+        pairing_date = p.paired_at.strftime(DATE_FORMAT)
         fb_by_user = {fb.user_id: fb for fb in p.feedbacks}
-        u1_full_name = get_full_name(p.user1)
+        u1_full_name = (f'{p.user1.first_name or ""} {p.user1.last_name or ""}'
+                        ).strip()
         fb1 = fb_by_user.get(p.user1_id)
         u1_did_met, u1_comment = get_feedback_data(fb1)
-        u2_full_name = get_full_name(p.user2)
+        u2_full_name = (f'{p.user2.first_name or ""} {p.user2.last_name or ""}'
+                        ).strip()
         fb2 = fb_by_user.get(p.user2_id)
         u2_did_met, u2_comment = get_feedback_data(fb2)
-        row = [pairing_date, u1_full_name, u1_did_met, u1_comment,
-               u2_full_name, u2_did_met, u2_comment]
-        await loop.run_in_executor(None, worksheet.append_row, row)
+        rows.append([pairing_date, u1_full_name, u1_did_met, u1_comment,
+                     u2_full_name, u2_did_met, u2_comment])
+    logger.info(f'Сформировано строк {len(rows)-1}')
 
+    await loop.run_in_executor(None, worksheet.clear)
+    await loop.run_in_executor(None, worksheet.append_rows, rows)
+    logger.info('Таблица пар с отзывами экспортирована.')
     return len(pairs)
 
 
-# Служеюная на время разработки
+# Служебная на время разработки
 async def create_pair(session: AsyncSession,
                       user1_id: int,
                       user2_id: int) -> Pair:
-    '''Создает пару. Возвращает экземпляр пары.'''
+    """Создает пару. Возвращает экземпляр пары."""
     pair = Pair(
                 user1_id=user1_id,
                 user2_id=user2_id
@@ -302,4 +317,5 @@ async def create_pair(session: AsyncSession,
         return pair
     except SQLAlchemyError as e:
         await session.rollback()
+        logger.exception(f'Ошибка при создании пары для {user1_id} и {user2_id}')
         raise e

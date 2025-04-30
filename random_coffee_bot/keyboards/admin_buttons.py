@@ -22,7 +22,6 @@ button_change_interval = KeyboardButton(
 buttons_kb_builder_admin = ReplyKeyboardBuilder()
 
 buttons_kb_builder_admin.row(
-    button_list_participants,
     button_participant_management,
     button_google_sheets,
     button_change_interval,
