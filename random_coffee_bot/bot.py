@@ -2,9 +2,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED
 
-from oauth2client.service_account import ServiceAccountCredentials
-import gspread_asyncio
-
 from datetime import datetime
 from random import shuffle
 import random
@@ -275,7 +272,6 @@ async def save_comment(telegram_id: int, comment_text: str, session_maker: async
 async def start_feedback_prompt(bot: Bot, telegram_id: int, dispatcher: Dispatcher):
     fsm_context = dispatcher.fsm.get_context(user_id=telegram_id, chat_id=telegram_id, bot=bot)
 
-    # Получаем текущее состояние
     state = await fsm_context.get_state()
 
     await bot.send_message(
@@ -286,6 +282,7 @@ async def start_feedback_prompt(bot: Bot, telegram_id: int, dispatcher: Dispatch
 
     await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
 
+# отображение когда сформируются пары и опрос как прошла встреча
 def show_next_runs(scheduler: AsyncIOScheduler):
     print("🔔 Расписание ближайших запусков задач:")
 
@@ -293,8 +290,14 @@ def show_next_runs(scheduler: AsyncIOScheduler):
         next_run = job.next_run_time
         print(f"🛠 Задача '{job.id}' запустится в: {next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else 'нет запланированного запуска'}")
 
+# сам запуск
 def job_listener(event):
     show_next_runs(scheduler)
+
+async def reload_scheduled_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
+    print("♻️ Перезапуск запланированных задач...")
+    scheduler.remove_all_jobs()
+    await schedule_feedback_jobs(bot, session_maker, dispatcher)
 
 async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
     async def setup_jobs():
@@ -303,15 +306,22 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
                 select(Setting.value).where(Setting.key == "global_interval")
             )
             setting_value = setting_result.scalar()
-            interval_weeks = setting_value if setting_value is not None else 2
-            interval_day = interval_weeks * 7 -3
-            users_result = await session.execute(select(User.telegram_id).where(User.is_active == True))
+            print(f"⚙️ Загружен новый интервал: {setting_value} минут")  # <--- добавлено
+
+            if setting_value is None:
+                setting_value = 2  # по умолчанию
+            interval_weeks = setting_value
+            interval_day = interval_weeks * 7 - 3
+
+            users_result = await session.execute(
+                select(User.telegram_id).where(User.is_active == True)
+            )
             telegram_ids = users_result.scalars().all()
 
             for telegram_id in telegram_ids:
                 scheduler.add_job(
                     start_feedback_prompt,
-                    trigger=IntervalTrigger(minutes=2),
+                    trigger=IntervalTrigger(minutes=setting_value),
                     args=[bot, telegram_id, dispatcher],
                     id=f"feedback_{telegram_id}",
                     replace_existing=True,
@@ -319,69 +329,25 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
 
         scheduler.add_job(
             auto_pairing,
-            trigger=IntervalTrigger(minutes=2),
+            trigger=IntervalTrigger(minutes=setting_value),
             args=[session_maker, bot],
-            id="auto_pairing_weekly"
+            id="auto_pairing_weekly",
+            replace_existing=True
         )
 
-    # ⬇⬇⬇ Ждем выполнения setup_jobs перед стартом планировщика
+        scheduler.add_job(
+            reload_scheduled_jobs,
+            trigger=IntervalTrigger(minutes=setting_value),
+            args=[bot, session_maker, dispatcher],
+            id="reload_jobs_hourly",
+            replace_existing=True
+        )
+
     await setup_jobs()
 
-    # Теперь можно запускать планировщик и печатать расписание
     if not scheduler.running:
         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
         scheduler.start()
 
     show_next_runs(scheduler)
 
-# Гугл таблицы
-def get_creds():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    return ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-
-# Главная функция
-async def export_pairs_to_google_sheet(session, spreadsheet_name="pair"):
-    agcm = gspread_asyncio.AsyncioGspreadClientManager(get_creds)
-    agc = await agcm.authorize()
-
-    # Создание или подключение к таблице
-    try:
-        sh = await agc.open(spreadsheet_name)
-    except gspread_asyncio.gspread.exceptions.SpreadsheetNotFound:
-        sh = await agc.create(spreadsheet_name)
-
-    # Получаем или создаём первый лист
-    try:
-        worksheet = await sh.get_worksheet(0)
-    except Exception:
-        worksheet = await sh.add_worksheet(title="Sheet1", rows="100", cols="10")
-
-    await worksheet.clear()
-
-    # Заголовки
-    headers = ["ID пары", "Дата",
-                "User1 Username",
-                "User2 Username",
-                "User3 Username"]
-    await worksheet.append_row(headers)
-
-    # Получение данных из БД
-    result = await session.execute(select(Pair))
-    pairs = result.scalars().all()
-
-    rows = []
-    for pair in pairs:
-        rows.append([
-            pair.id,
-            pair.paired_at.strftime("%Y-%m-%d %H:%M:%S") if pair.paired_at else "",
-            #pair.user1_id,
-            pair.user1_username or "",
-            #pair.user2_id,
-            pair.user2_username or "",
-            #pair.user3_id or "",
-            pair.user3_username or ""
-        ])
-
-    # Добавление данных
-    await worksheet.append_rows(rows, value_input_option="RAW")
-    return f"https://docs.google.com/spreadsheets/d/{sh.id}"

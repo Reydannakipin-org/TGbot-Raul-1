@@ -26,7 +26,6 @@ from keyboards.user_buttons import (
     create_inactive_user_keyboard
 )
 
-from random_coffee_bot.bot import export_pairs_to_google_sheet
 from random_coffee_bot.states.user_states import FSMUserForm
 
 logger = logging.getLogger(__name__)
@@ -495,14 +494,3 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
 #     await state.clear()
 #     await message.answer("Действие отменено ❌")
 
-# выгрузка данных из бд в гугл таблицу
-@user_router.message(F.text.lower() == "/export_pairs")
-async def handle_export_pairs(message: types.Message, session_maker):
-    await message.answer("📤 Экспортирую пары в Google Таблицу...")
-
-    try:
-        async with session_maker() as session:
-            link = await export_pairs_to_google_sheet(session)
-        await message.answer(f"✅ Готово! Вот ссылка:\n{link}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка при экспорте: {str(e)}")

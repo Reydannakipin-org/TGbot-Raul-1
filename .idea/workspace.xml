@@ -206,7 +206,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py</url>
-          <line>38</line>
+          <line>37</line>
           <option name="timeStamp" value="10" />
         </line-breakpoint>
       </breakpoints>
