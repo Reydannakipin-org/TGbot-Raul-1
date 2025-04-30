@@ -38,6 +38,11 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(user_router)
 
+
+    # Так как БД сейчас настроена через Alembic, эта строчка не нужна.
+    # Но оставим, если понадобиться вручную дропнуть БД и создать новую.
+    # await create_database()
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
