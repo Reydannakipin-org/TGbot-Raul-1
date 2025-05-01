@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
 from aiogram.types import Message, ReplyKeyboardRemove, CallbackQuery
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.db import AsyncSessionLocal
 from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
@@ -20,6 +21,7 @@ from services.user_service import (create_user,
                                    parse_callback_data,
                                    set_new_user_interval,
                                    create_text_with_default_interval,
+                                   get_global_interval,
                                    )
 from states.user_states import FSMUserForm
 from keyboards.user_buttons import (
@@ -453,11 +455,13 @@ async def process_frequency(message: Message):
     StateFilter(default_state)
 )
 async def handle_callback_query_yes(callback_query: CallbackQuery):
-    await callback_query.message.delete()
-    await callback_query.message.answer(
-        USER_TEXTS['update_frequency'],
-        reply_markup=generate_inline_interval()
-    )
+    async with AsyncSessionLocal() as session:  # Создаем сессию
+        await callback_query.message.delete()
+        reply_markup = await generate_inline_interval(session)  # Передаем сессию в функцию
+        await callback_query.message.answer(
+            USER_TEXTS['update_frequency'],
+            reply_markup=reply_markup
+        )
 
 
 @user_router.callback_query(
@@ -505,7 +509,7 @@ async def handle_callback_query_no(callback: CallbackQuery):
 async def set_interval_command(message: Message):
     try:
         # Устанавливаем новый интервал (например, 2)
-        new_interval = 4  # Замените на нужный вам интервал
+        new_interval = 2  # Замените на нужный вам интервал
 
         async with AsyncSessionLocal() as session:
             await set_new_global_interval(session, new_interval)

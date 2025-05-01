@@ -1,5 +1,7 @@
 from aiogram.types import KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
+from sqlalchemy.ext.asyncio import AsyncSession
+from services.user_service import get_global_interval
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from texts import (KEYBOARD_BUTTON_TEXTS,
                    INLINE_BUTTON_TEXTS,
@@ -96,11 +98,13 @@ def create_inactive_user_keyboard():
     return buttons_kb_builder_user.as_markup(resize_keyboard=True)
 
 
-def generate_inline_interval():
-    return InlineKeyboardMarkup(inline_keyboard=[
+async def generate_inline_interval(session: AsyncSession):
+    admin_interval = await get_global_interval(session)
+    text = f'По умолчанию: {admin_interval} раза в неделю'
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text=USER_TEXTS['admin_changing_interval'],
+                text=text,
                 callback_data='change_interval'
             )
         ],
@@ -123,3 +127,4 @@ def generate_inline_interval():
             )
         ]
     ])
+    return keyboard
