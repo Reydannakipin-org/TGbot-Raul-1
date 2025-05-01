@@ -4,7 +4,13 @@ from aiogram import F, Router, types
 from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup, default_state
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardRemove
+from aiogram.types import (
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    CallbackQuery,
+    ReplyKeyboardRemove
+)
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy import select, or_, desc, update

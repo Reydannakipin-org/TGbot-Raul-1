@@ -5,10 +5,23 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9666058e-16da-4588-b2b3-e30931dfb266" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/random_coffee_bot/credentials.example" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/random_coffee_bot/services/admin_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/random_coffee_bot/services/constants.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/random_coffee_bot/utils/google_sheets.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/random_coffee_bot/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/bot.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/.env.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/keyboards/admin_buttons.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/keyboards/admin_buttons.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/random_coffee_bot/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/services/user_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/services/user_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/states/admin_states.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/states/admin_states.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_coffee_bot/texts.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_coffee_bot/texts.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -36,19 +49,19 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.admin_handlers.executor&quot;: &quot;Debug&quot;,
-    &quot;Python.bot.executor&quot;: &quot;Debug&quot;,
-    &quot;Python.handlers.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test_pairing.executor&quot;: &quot;Debug&quot;,
-    &quot;Python.users_handlers.executor&quot;: &quot;Debug&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;andrey&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.admin_handlers.executor": "Debug",
+    "Python.bot.executor": "Debug",
+    "Python.handlers.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.test_pairing.executor": "Debug",
+    "Python.users_handlers.executor": "Debug",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "Merging andrey"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\a\PycharmProjects\hatacon\random_coffee_bot" />
@@ -206,8 +219,12 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/random_coffee_bot/handlers/users_handlers.py</url>
-          <line>37</line>
+          <line>42</line>
           <option name="timeStamp" value="10" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/random_coffee_bot/handlers/admin_handlers.py</url>
+          <option name="timeStamp" value="14" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

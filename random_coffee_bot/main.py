@@ -24,6 +24,7 @@ async def main():
     config: Config = load_config()
     group_tg_id = config.tg_bot.group_tg_id
     admin_id = config.tg_bot.admin_tg_id
+    google_sheet_id = config.g_sheet.sheet_id
 
     engine = create_async_engine(config.db.db_url, echo=False)
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
@@ -35,7 +36,8 @@ async def main():
     dp.workflow_data.update({
         'group_tg_id': group_tg_id,
         'session_maker': session_maker,
-        'admin_id': admin_id
+        'admin_id': admin_id,
+        'google_sheet_id': google_sheet_id
     })
 
     dp.update.middleware(AccessMiddleware())

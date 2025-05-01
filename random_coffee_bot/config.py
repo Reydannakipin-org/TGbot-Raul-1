@@ -17,9 +17,15 @@ class TgBot:
 
 
 @dataclass
+class GoogleSheetConfig:
+    sheet_id: str
+
+
+@dataclass
 class Config:
     tg_bot: TgBot
     db: DatabaseConfig
+    g_sheet: GoogleSheetConfig
 
 
 def load_config(path: str | None = None) -> Config:
@@ -36,5 +42,8 @@ def load_config(path: str | None = None) -> Config:
         ),
         db=DatabaseConfig(
             db_url=env('DATABASE_URL')
+        ),
+        g_sheet=GoogleSheetConfig(
+            sheet_id=env('GOOGLE_SHEET_ID')
         )
     )
