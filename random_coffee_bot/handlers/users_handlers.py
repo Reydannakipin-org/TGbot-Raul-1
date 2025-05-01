@@ -465,29 +465,38 @@ async def handle_callback_query_yes(callback_query: CallbackQuery):
 
 
 @user_router.callback_query(
-    lambda c: c.data.startswith('new_interval:'),
+    lambda c: c.data.startswith('new_interval:') or c.data.startswith(
+        'change_interval'
+    ),
     StateFilter(default_state)
 )
-async def process_set_new_interval_user(callback: CallbackQuery):
+async def process_set_or_change_interval(callback: CallbackQuery):
     '''
-    Хэндлер срабатывает на нажатии пользователем инлайн-кнопки
-    с выбором частоты встреч.
+    Хэндлер срабатывает на нажатие пользователем инлайн-кнопки
+    с выбором частоты встреч или установкой частоты встреч по умолчанию.
     '''
-    _, new_interval = parse_callback_data(callback.data)
     try:
         async with AsyncSessionLocal() as session:
             user_id = callback.from_user.id
+
+            if callback.data.startswith('new_interval:'):
+                _, new_interval = parse_callback_data(callback.data)
+            else:
+                new_interval = None
+
             await set_new_user_interval(session, user_id, new_interval)
 
             data_text = await create_text_with_interval(
-                session, USER_TEXTS['success_new_interval'], user_id
+                session,
+                USER_TEXTS['success_new_interval'],
+                user_id
             )
 
             if isinstance(callback.message, Message):
                 await callback.message.edit_text(text=data_text)
 
-    except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных ')
+    except SQLAlchemyError as e:
+        logger.error(f'Ошибка при работе с базой данных: {e}')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
 
@@ -509,7 +518,7 @@ async def handle_callback_query_no(callback: CallbackQuery):
 async def set_interval_command(message: Message):
     try:
         # Устанавливаем новый интервал (например, 2)
-        new_interval = 2  # Замените на нужный вам интервал
+        new_interval = 4  # Замените на нужный вам интервал
 
         async with AsyncSessionLocal() as session:
             await set_new_global_interval(session, new_interval)

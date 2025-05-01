@@ -174,7 +174,7 @@ async def create_text_with_interval(
 ) -> str:
     '''
     Создает текст для ответа когда пользоватеь
-    решил изменить интервал встчер.
+    решил изменить интервал встреч.
     '''
     admin_current_interval = await get_global_interval(session)
     user_current_interval = await get_user_interval(session, user_id)
@@ -208,7 +208,7 @@ async def create_text_with_interval(
     return data_text
 
 
-async def get_global_interval(session: AsyncSession) -> Optional[str]:
+async def get_global_interval(session: AsyncSession) -> Optional[int]:
     '''
     Возвращает из базы данных значение глобального интервала.
     '''
@@ -232,7 +232,7 @@ async def get_user_interval(
 
 
 async def set_new_user_interval(
-    session: AsyncSession, user_id: int, new_value: int
+    session: AsyncSession, user_id: int, new_value: int | None
 ) -> None:
     '''
     Изменяет значение интервала для конкретного пользователя в таблице users.
