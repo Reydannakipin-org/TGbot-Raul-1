@@ -1,5 +1,5 @@
 # flake8: noqa
-
+NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:-[A-Za-zА-Яа-яЁё]+)*$'
 TEXTS = {
     'deny_access': 'Извините, доступ к боту разрешён только участникам корпоративной группы.',
     'error_access': 'Произошла ошибка при проверке доступа. Попробуйте позже.',
@@ -72,8 +72,10 @@ USER_TEXTS = {
                                   'участников я подбираю \nпару {their_interval}.\n\nХочешь изменить частоту встреч?'),
     'admin_changing_interval': 'Как решит администратор (Сейчас это {admin_interval}.)',
     'user_default_interval': 'Ты оставил преждюю частоту встреч: {current_interval}',
-    'success_new_interval': 'Установлена новая частота встреч: {your_interval}.'
-    
+    'success_new_interval': 'Установлена новая частота встреч: {your_interval}.',
+    'participation_status': 'Имя: {first_name} \nФамилия: {last_name} \nЧастота встреч: {interval} \nСтатус: {status}',
+    'update_full_name': 'Твои текущие данные: \nИмя: {first_name} \nФамилия: {last_name} \n\nТы уверен, что хочешь узменить их?',
+    'no_update': 'Изминение данных отменено',
 }
 
 INTERVAL_TEXTS = {

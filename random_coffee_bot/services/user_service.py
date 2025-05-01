@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from datetime import date
 
 from database.models import User
-from texts import ADMIN_TEXTS, INTERVAL_TEXTS
+from texts import ADMIN_TEXTS, INTERVAL_TEXTS, USER_TEXTS
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +143,99 @@ async def delete_user(session: AsyncSession, telegram_id: int) -> bool:
     except SQLAlchemyError as e:
         await session.rollback()
         raise e
+
+
+async def get_user_full_name_message(
+    session: AsyncSession, user_id: int
+) -> str:
+    '''
+    Формирует сообщение с именем и фамилией пользователя.
+    '''
+    first_name = await get_first_name_user(session, user_id)
+    last_name = await get_last_name_user(session, user_id)
+
+    message = USER_TEXTS['update_full_name'].format(
+        first_name=first_name,
+        last_name=last_name
+    )
+    return message
+
+
+async def create_text_status_active(
+    session: AsyncSession, user_id: int
+) -> str:
+    '''
+    Создает текст с информацией для кнопки "Мой статус участия".
+    '''
+
+    first_name = await get_first_name_user(session, user_id)
+    last_name = await get_last_name_user(session, user_id)
+    meetings = await get_meetings(session, user_id)
+    status = await get_status_active(session, user_id)
+
+    # Формируем статус активности
+    status_text = "Активен" if status else "Неактивен"
+    interval_text = INTERVAL_TEXTS.get(str(meetings), INTERVAL_TEXTS['default'])
+
+    # Если частота встреч по умолчанию, получаем интервал от администратора
+    if interval_text == INTERVAL_TEXTS['default']:
+        admin_interval = await get_global_interval(session)
+        interval_text = INTERVAL_TEXTS.get(str(admin_interval), INTERVAL_TEXTS['default'])
+
+    message = USER_TEXTS['participation_status'].format(
+        first_name=first_name or "Не указано",
+        last_name=last_name or "Не указано",
+        interval=interval_text,
+        status=status_text
+    )
+
+    return message
+
+
+async def get_first_name_user(
+    session: AsyncSession, user_id: int
+) -> str | None:
+    '''
+    Возвращает имя пользователя по его ID.
+    '''
+    result = await session.execute(
+        select(User.first_name).where(User.telegram_id == user_id)
+    )
+    return result.scalar()
+
+
+async def get_last_name_user(
+    session: AsyncSession, user_id: int
+) -> str | None:
+    '''
+    Возвращает фамилию пользователя по его ID.
+    '''
+    result = await session.execute(
+        select(User.last_name).where(User.telegram_id == user_id)
+    )
+    return result.scalar()
+
+
+async def get_meetings(
+    session: AsyncSession, user_id: int
+) -> int | None:
+    '''
+    Возвращает количество встреч пользователя по его ID.
+    '''
+    result = await session.execute(
+        select(User.pairing_interval).where(User.telegram_id == user_id)
+    )
+    return result.scalar()
+
+
+async def get_status_active(session: AsyncSession, user_id: int) -> bool | None:
+    '''
+    Возвращает статус активности пользователя по его ID.
+    '''
+    result = await session.execute(
+        select(User.is_active).where(User.telegram_id == user_id)
+    )
+    return result.scalar()
 
 
 async def create_text_with_default_interval(

@@ -22,6 +22,8 @@ from services.user_service import (create_user,
                                    set_new_user_interval,
                                    create_text_with_default_interval,
                                    get_global_interval,
+                                   create_text_status_active,
+                                   get_user_full_name_message,
                                    )
 from states.user_states import FSMUserForm
 from keyboards.user_buttons import (
@@ -31,7 +33,10 @@ from keyboards.user_buttons import (
     create_inactive_user_keyboard,
     generate_inline_confirm_change_interval,
     generate_inline_interval,
+    yes_or_no_keyboard,
 )
+
+NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:[-\s][A-Za-zА-Яа-яЁё]+)*$'
 
 
 logger = logging.getLogger(__name__)
@@ -80,7 +85,7 @@ async def process_start_command(message: Message, state: FSMContext):
 
 
 @user_router.message(StateFilter(FSMUserForm.waiting_for_first_name),
-                     F.text.isalpha())
+                     F.text.regexp(NAME_PATTERN))
 async def process_first_name_sending(message: Message, state: FSMContext):
     '''
     Хэндлер срабатывает в состоянии, когда мы ждем от пользователя его имя,
@@ -123,7 +128,7 @@ async def warning_not_first_name(message: Message, state: FSMContext):
 
 
 @user_router.message(StateFilter(FSMUserForm.waiting_for_last_name),
-                     F.text.isalpha())
+                     F.text.regexp(NAME_PATTERN))
 async def process_last_name_sending(message: Message, state: FSMContext):
     '''
     Хэндлер срабатывает в состоянии, когда мы ждем от пользователя
@@ -430,6 +435,150 @@ async def process_clean_keyboards(message: Message, state: FSMContext):
                          reply_markup=ReplyKeyboardRemove())
 
 
+@user_router.message(
+    F.text == KEYBOARD_BUTTON_TEXTS['button_change_my_details'],
+    StateFilter(default_state)
+)
+async def update_full_name(message: Message):
+    '''
+    Хэндлер для обновления имени и фамилии пользователя.
+    '''
+    telegram_id = message.from_user.id
+
+    async with AsyncSessionLocal() as session:
+        # Получаем текущее имя и фамилию пользователя
+        user = await get_user_by_telegram_id(session, telegram_id)
+
+        if user is None:
+            await message.answer("Пользователь не найден.")
+            return
+
+        # Форматируем сообщение с текущими данными
+        user_message = f"Твои текущие данные: \nИмя: {user.first_name} \nФамилия: {user.last_name} \n\nТы уверен, что хочешь изменить их?"
+
+    # Отправляем сообщение пользователю
+    await message.answer(
+        user_message,
+        reply_markup=yes_or_no_keyboard()
+    )
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('change_my_details_yes'),
+    StateFilter(default_state)
+)
+async def update_full_name_yes(callback: CallbackQuery, state: FSMContext):
+    '''
+    Хэндлер для подтверждения изменения имени и фамилии.
+    '''
+    await callback.message.delete()
+    await callback.message.answer("Введите новое имя:")
+    await state.set_state(FSMUserForm.waiting_for_first_name)
+
+
+# NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:-[A-Za-zА-Яа-яЁё]+)*$'
+
+
+# @user_router.message(StateFilter(FSMUserForm.waiting_for_first_name))
+# @user_router.message(F.text.regexp(NAME_PATTERN))
+# async def process_first_name(message: Message, state: FSMContext):
+#     '''
+#     Хэндлер для получения нового имени пользователя.
+#     '''
+#     new_first_name = message.text
+#     await state.update_data(first_name=new_first_name)
+
+#     await message.answer("Введите новую фамилию:")
+#     await state.set_state(FSMUserForm.waiting_for_last_name)
+
+
+# @user_router.message(StateFilter(FSMUserForm.waiting_for_last_name))
+# @user_router.message(F.text.regexp(NAME_PATTERN))
+# async def process_last_name(message: Message, state: FSMContext):
+#     '''
+#     Хэндлер для получения новой фамилии пользователя.
+#     '''
+#     new_last_name = message.text
+#     await state.update_data(last_name=new_last_name)
+
+#     user_data = await state.get_data()
+
+#     async with AsyncSessionLocal() as session:
+#         # Обновляем имя и фамилию в базе данных
+#         first_name_updated = await update_user_field(session, message.from_user.id, 'first_name', user_data['first_name'])
+#         last_name_updated = await update_user_field(session, message.from_user.id, 'last_name', user_data['last_name'])
+
+#         if first_name_updated and last_name_updated:
+#             await message.answer("Ваши данные успешно обновлены!")
+#         else:
+#             await message.answer("Не удалось обновить данные.")
+
+#     # Сбрасываем состояние
+#     await state.finish()
+
+
+# @user_router.message(
+#     F.text == KEYBOARD_BUTTON_TEXTS['button_change_my_details'],
+#     StateFilter(default_state)
+# )
+# async def update_full_name(message: Message):
+#     '''
+#     Хэндлер для обновления имени и фамилии пользователя.
+#     '''
+#     telegram_id = message.from_user.id
+
+#     async with AsyncSessionLocal() as session:
+#         # Получаем сообщение с обновленным именем и фамилией
+#         user_message = await get_user_full_name_message(session, telegram_id)
+
+#     # Отправляем сообщение пользователю
+#     await message.answer(
+#         user_message,
+#         reply_markup=yes_or_no_keyboard()
+#     )
+
+
+# @user_router.callback_query(
+#     lambda c: c.data.startswith('change_my_details_yes'),
+#     StateFilter(default_state)
+# )
+# async def update_full_name_yes(message: Message, state: FSMContext):
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('change_my_details_no'),
+    StateFilter(default_state)
+)
+async def no_update(callback: CallbackQuery):
+    '''
+    Хэндлер для обработки отказа от обновления данных.
+    '''
+    await callback.message.delete()
+    await callback.message.answer(USER_TEXTS['no_update'])
+
+
+@user_router.message(
+    F.text == KEYBOARD_BUTTON_TEXTS['button_my_status'],
+    StateFilter(default_state))
+async def status_active(message: Message):
+    '''
+    Хэндлер для кнопки "Мой статус участия".
+    '''
+    user_id = message.from_user.id  # Получаем ID пользователя
+
+    try:
+        async with AsyncSessionLocal() as session:
+            # Создаем текст статуса участия
+            status_message = await create_text_status_active(session, user_id)
+
+            # Отправляем сообщение пользователю
+            await message.answer(status_message)
+
+    except Exception as e:
+        logger.error(f'Ошибка при получении статуса пользователя: {e}')
+        await message.answer(ADMIN_TEXTS['db_error'])
+
+
 @user_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_edit_meetings'],
                      StateFilter(default_state))
 async def process_frequency(message: Message):
@@ -454,11 +603,11 @@ async def process_frequency(message: Message):
     lambda c: c.data.startswith('confirm_changing_interval'),
     StateFilter(default_state)
 )
-async def handle_callback_query_yes(callback_query: CallbackQuery):
+async def handle_callback_query_yes(callback: CallbackQuery):
     async with AsyncSessionLocal() as session:  # Создаем сессию
-        await callback_query.message.delete()
+        await callback.message.delete()
         reply_markup = await generate_inline_interval(session)  # Передаем сессию в функцию
-        await callback_query.message.answer(
+        await callback.message.answer(
             USER_TEXTS['update_frequency'],
             reply_markup=reply_markup
         )
@@ -518,7 +667,7 @@ async def handle_callback_query_no(callback: CallbackQuery):
 async def set_interval_command(message: Message):
     try:
         # Устанавливаем новый интервал (например, 2)
-        new_interval = 4  # Замените на нужный вам интервал
+        new_interval = 3  # Замените на нужный вам интервал
 
         async with AsyncSessionLocal() as session:
             await set_new_global_interval(session, new_interval)

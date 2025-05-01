@@ -128,3 +128,15 @@ async def generate_inline_interval(session: AsyncSession):
         ]
     ])
     return keyboard
+
+
+def yes_or_no_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['yes'],
+                              callback_data="change_my_details_yes"
+                              ),
+         InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['no'],
+                              callback_data="change_my_details_no"
+                              )]
+    ])
+    return keyboard
