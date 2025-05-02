@@ -476,75 +476,6 @@ async def update_full_name_yes(callback: CallbackQuery, state: FSMContext):
     await state.set_state(FSMUserForm.waiting_for_first_name)
 
 
-# NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:-[A-Za-zА-Яа-яЁё]+)*$'
-
-
-# @user_router.message(StateFilter(FSMUserForm.waiting_for_first_name))
-# @user_router.message(F.text.regexp(NAME_PATTERN))
-# async def process_first_name(message: Message, state: FSMContext):
-#     '''
-#     Хэндлер для получения нового имени пользователя.
-#     '''
-#     new_first_name = message.text
-#     await state.update_data(first_name=new_first_name)
-
-#     await message.answer("Введите новую фамилию:")
-#     await state.set_state(FSMUserForm.waiting_for_last_name)
-
-
-# @user_router.message(StateFilter(FSMUserForm.waiting_for_last_name))
-# @user_router.message(F.text.regexp(NAME_PATTERN))
-# async def process_last_name(message: Message, state: FSMContext):
-#     '''
-#     Хэндлер для получения новой фамилии пользователя.
-#     '''
-#     new_last_name = message.text
-#     await state.update_data(last_name=new_last_name)
-
-#     user_data = await state.get_data()
-
-#     async with AsyncSessionLocal() as session:
-#         # Обновляем имя и фамилию в базе данных
-#         first_name_updated = await update_user_field(session, message.from_user.id, 'first_name', user_data['first_name'])
-#         last_name_updated = await update_user_field(session, message.from_user.id, 'last_name', user_data['last_name'])
-
-#         if first_name_updated and last_name_updated:
-#             await message.answer("Ваши данные успешно обновлены!")
-#         else:
-#             await message.answer("Не удалось обновить данные.")
-
-#     # Сбрасываем состояние
-#     await state.finish()
-
-
-# @user_router.message(
-#     F.text == KEYBOARD_BUTTON_TEXTS['button_change_my_details'],
-#     StateFilter(default_state)
-# )
-# async def update_full_name(message: Message):
-#     '''
-#     Хэндлер для обновления имени и фамилии пользователя.
-#     '''
-#     telegram_id = message.from_user.id
-
-#     async with AsyncSessionLocal() as session:
-#         # Получаем сообщение с обновленным именем и фамилией
-#         user_message = await get_user_full_name_message(session, telegram_id)
-
-#     # Отправляем сообщение пользователю
-#     await message.answer(
-#         user_message,
-#         reply_markup=yes_or_no_keyboard()
-#     )
-
-
-# @user_router.callback_query(
-#     lambda c: c.data.startswith('change_my_details_yes'),
-#     StateFilter(default_state)
-# )
-# async def update_full_name_yes(message: Message, state: FSMContext):
-
-
 @user_router.callback_query(
     lambda c: c.data.startswith('change_my_details_no'),
     StateFilter(default_state)
@@ -660,6 +591,11 @@ async def handle_callback_query_no(callback: CallbackQuery):
         )
     if isinstance(callback.message, Message):
         await callback.message.edit_text(text=data_text)
+
+
+@user_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_how_it_works'])
+async def text_random_coffee(message: Message):
+    await message.answer(USER_TEXTS['random_coffee_bot'])
 
 
 #Хэндлер для тестов нужно будет удалить
