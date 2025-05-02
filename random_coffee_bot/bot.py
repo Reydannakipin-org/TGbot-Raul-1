@@ -227,9 +227,8 @@ async def auto_pairing(session_maker, bot: Bot):
 
         await notify_users_about_pairs(session, pairs, bot)
 
-async def save_comment(telegram_id: int, comment_text: str, session_maker: async_sessionmaker) -> str:
+async def save_comment(telegram_id: int, comment_text: str, session_maker: async_sessionmaker, pair_id: int) -> str:
     async with session_maker() as session:
-        # Получаем user по telegram_id
         result_user = await session.execute(
             select(User).where(User.telegram_id == telegram_id)
         )
@@ -238,20 +237,6 @@ async def save_comment(telegram_id: int, comment_text: str, session_maker: async
             return f"Пользователь с telegram_id {telegram_id} не найден"
 
         user_id = user.id
-
-        # Ищем последнюю пару, где он есть
-        result_pair = await session.execute(
-            select(Pair)
-            .where(or_(Pair.user1_id == user_id, Pair.user2_id == user_id, Pair.user3_id == user_id))
-            .order_by(Pair.paired_at.desc())
-        )
-        pair = result_pair.scalars().first()
-
-        if not pair:
-            return "Ошибка: вы ещё не участвуете в паре 🤷"
-
-        # Тут сохраняем комментарий
-        pair_id = pair.id
 
         result_feedback = await session.execute(
             select(Feedback).where(Feedback.user_id == user_id, Feedback.pair_id == pair_id)
@@ -356,13 +341,13 @@ async def feedback_dispatcher_job(bot: Bot, session_maker, dispatcher: Dispatche
 
             for user in users:
                 try:
-                    fsm_context = dispatcher.fsm.get_context(user_id=user.telegram_id, chat_id=user.telegram_id, bot=bot)
+                    #fsm_context = dispatcher.fsm.get_context(user_id=user.telegram_id, chat_id=user.telegram_id, bot=bot)
                     await bot.send_message(
                         user.telegram_id,
                         "Привет! Прошла ли встреча?",
                         reply_markup=meeting_question_kb(pair.id)
                     )
-                    await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
+                    #await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
 
                 except Exception as e:
                     print(f"⚠️ Не удалось отправить опрос для {user.telegram_id}: {e}")
@@ -379,7 +364,7 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
 
         scheduler.add_job(
             auto_pairing,
-            trigger=IntervalTrigger(seconds=180),
+            trigger=IntervalTrigger(seconds=160),
             args=[session_maker, bot],
             id="auto_pairing_weekly",
             replace_existing=True
@@ -387,7 +372,7 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
 
         scheduler.add_job(
             reload_scheduled_jobs,
-            trigger=IntervalTrigger(seconds=180),
+            trigger=IntervalTrigger(seconds=160),
             args=[bot, session_maker, dispatcher],
             id="reload_jobs_hourly",
             replace_existing=True

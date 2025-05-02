@@ -454,11 +454,11 @@ async def process_meeting_feedback(callback: types.CallbackQuery, state: FSMCont
 
     if data.startswith("meeting_no"):
         await callback.message.answer("Спасибо за информацию!")
-        await state.clear()
     else:
-        await callback.message.answer("Хотите оставить комментарий?", reply_markup=comment_question_kb(pair_id))
-        await state.update_data(pair_id=pair_id)
-        await state.set_state(FeedbackStates.waiting_for_comment_decision)
+        await callback.message.answer(
+            "Хотите оставить комментарий?",
+            reply_markup=comment_question_kb(pair_id)
+        )
 
 # --- Ответ: Комментарий или нет ---
 @user_router.callback_query(F.data.startswith("leave_comment") | F.data.startswith("no_comment"))
@@ -467,24 +467,27 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
     data = callback.data
     action, pair_id = data.split(":")
 
-    await state.update_data(pair_id=pair_id)
-
     if action == "no_comment":
         await callback.message.answer("Спасибо! Отзыв учтён ✅")
-        await state.clear()
     else:
-        await callback.message.answer("Введите комментарий.")
-        await state.set_state(FeedbackStates.writing_comment)
+        await state.update_data(pair_id=int(pair_id))
+        await callback.message.answer("Введите комментарий:")
 
 # --- Обработка комментария ---
-@user_router.message(FeedbackStates.writing_comment, F.text)
+@user_router.message(F.text)
 async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
-    session_maker = kwargs['session_maker']
+    session_maker = kwargs["session_maker"]
     user_id = message.from_user.id
     comment_text = message.text
 
+    data = await state.get_data()
+    pair_id = data.get("pair_id")
 
-    status_msg = await save_comment(user_id, comment_text, session_maker)
+    if pair_id is None:
+        await message.answer("Комментарий не принят — не указана пара.")
+        return
+
+    status_msg = await save_comment(user_id, comment_text, session_maker, pair_id=int(pair_id))
     await message.answer(status_msg)
     await state.clear()
 
