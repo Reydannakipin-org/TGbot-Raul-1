@@ -29,10 +29,14 @@ from keyboards.user_buttons import (
     create_active_user_keyboard,
     create_activate_keyboard,
     create_deactivate_keyboard,
-    create_inactive_user_keyboard
+    create_inactive_user_keyboard,
+    meeting_question_kb,
+    comment_question_kb
 )
 
 from random_coffee_bot.states.user_states import FSMUserForm
+
+from bot import  FeedbackStates
 
 logger = logging.getLogger(__name__)
 
@@ -441,41 +445,31 @@ async def process_clean_keyboards(message: Message, state: FSMContext):
 #                          'Пожалуйста, используй клавиатуру.')
 
 
-class FeedbackStates(StatesGroup):
-    waiting_for_feedback_decision = State()
-    waiting_for_comment_decision = State()
-    writing_comment = State()
-
-# --- Инлайн-кнопки ---
-def meeting_question_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да", callback_data="meeting_yes")],
-        [InlineKeyboardButton(text="❌ Нет", callback_data="meeting_no")]
-    ])
-
-def comment_question_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✍️ Оставить комментарий", callback_data="leave_comment")],
-        [InlineKeyboardButton(text="⏭️ Без комментария", callback_data="no_comment")]
-    ])
-
-
 # --- Ответ: Да/Нет встреча ---
-@user_router.callback_query(F.data.in_(["meeting_yes", "meeting_no"]))
+@user_router.callback_query(F.data.startswith("meeting_yes") | F.data.startswith("meeting_no"))
 async def process_meeting_feedback(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    if callback.data == "meeting_no":
+    data = callback.data
+    pair_id = data.split(":")[1] if ":" in data else None
+
+    if data.startswith("meeting_no"):
         await callback.message.answer("Спасибо за информацию!")
         await state.clear()
     else:
-        await callback.message.answer("Хотите оставить комментарий?", reply_markup=comment_question_kb())
+        await callback.message.answer("Хотите оставить комментарий?", reply_markup=comment_question_kb(pair_id))
+        await state.update_data(pair_id=pair_id)
         await state.set_state(FeedbackStates.waiting_for_comment_decision)
 
 # --- Ответ: Комментарий или нет ---
-@user_router.callback_query(F.data.in_(["leave_comment", "no_comment"]))
+@user_router.callback_query(F.data.startswith("leave_comment") | F.data.startswith("no_comment"))
 async def process_comment_choice(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    if callback.data == "no_comment":
+    data = callback.data
+    action, pair_id = data.split(":")
+
+    await state.update_data(pair_id=pair_id)
+
+    if action == "no_comment":
         await callback.message.answer("Спасибо! Отзыв учтён ✅")
         await state.clear()
     else:
@@ -485,9 +479,10 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
 # --- Обработка комментария ---
 @user_router.message(FeedbackStates.writing_comment, F.text)
 async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
-    session_maker = kwargs['session_maker']  # <- получаем из workflow_data
+    session_maker = kwargs['session_maker']
     user_id = message.from_user.id
     comment_text = message.text
+
 
     status_msg = await save_comment(user_id, comment_text, session_maker)
     await message.answer(status_msg)

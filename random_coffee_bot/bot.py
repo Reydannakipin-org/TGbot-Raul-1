@@ -6,32 +6,24 @@ from datetime import datetime
 from random import shuffle
 import random
 from collections import defaultdict
-
-from sqlalchemy import select, or_
+from keyboards.user_buttons import meeting_question_kb
+from sqlalchemy import select, or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.models import User, Pair, Setting, Feedback
 
 scheduler = AsyncIOScheduler()
 
 class FeedbackStates(StatesGroup):
-    waiting_for_feedback_decision = State()
-    waiting_for_comment_decision = State()
     writing_comment = State()
 
 class CommentStates(StatesGroup):
     waiting_for_comment = State()
 
-def meeting_question_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да", callback_data="meeting_yes")],
-        [InlineKeyboardButton(text="❌ Нет", callback_data="meeting_no")]
-    ])
 
 async def prompt_user_comment(user_id: int):
     # Установим FSM состояние
@@ -39,6 +31,25 @@ async def prompt_user_comment(user_id: int):
     await state.set_state(CommentStates.waiting_for_comment)
 
     await bot.send_message(user_id, "Привет! Пожалуйста, оставь комментарий о последней встрече ☕️")
+
+# ласт пара
+async def get_latest_pair_id_for_user(session: AsyncSession, user_id: int) -> int | None:
+    result = await session.execute(
+        select(Pair.id)
+        .where(
+            and_(
+                or_(
+                    Pair.user1_id == user_id,
+                    Pair.user2_id == user_id,
+                    Pair.user3_id == user_id
+                ),
+                Pair.paired_at < datetime.utcnow()  # только прошедшие
+            )
+        )
+        .order_by(Pair.paired_at.desc())
+    )
+    pair_id = result.scalar_one_or_none()
+    return pair_id
 
 async def get_users_ready_for_matching(session: AsyncSession) -> list[User]:
     """Выбираем пользователей для участия в формировании пар по правилам."""
@@ -126,8 +137,6 @@ async def generate_unique_pairs(session, users: list[User]) -> list[Pair]:
         u1, u2 = user_map[u1_id], user_map[u2_id]
         pair = Pair(
             user1_id=u1.id, user2_id=u2.id,
-            # user1_username=u1.username,
-            # user2_username=u2.username,
             paired_at=datetime.utcnow()
         )
         u1.last_paired_at = datetime.utcnow()
@@ -269,18 +278,36 @@ async def save_comment(telegram_id: int, comment_text: str, session_maker: async
         return status_msg
 
 
-async def start_feedback_prompt(bot: Bot, telegram_id: int, dispatcher: Dispatcher):
-    fsm_context = dispatcher.fsm.get_context(user_id=telegram_id, chat_id=telegram_id, bot=bot)
+async def start_feedback_prompt(bot: Bot, telegram_id: int, dispatcher: Dispatcher, session_maker):
+    async with session_maker() as session:
+        # Получаем пользователя по telegram_id
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user: User | None = result.scalar_one_or_none()
 
-    state = await fsm_context.get_state()
+        if not user:
+            print(f"⚠️ Пользователь с telegram_id={telegram_id} не найден.")
+            return
 
-    await bot.send_message(
-        telegram_id,
-        "Привет! Прошла ли встреча?",
-        reply_markup=meeting_question_kb()  # Убедись, что у тебя есть функция meeting_question_kb()
-    )
+        # Получаем pair_id — ID пары, в которой он участвовал сегодня
+        pair_id = await get_latest_pair_id_for_user(session, user.id)
 
-    await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
+        if not pair_id:
+            print(f"ℹ️ Пользователь {telegram_id} сегодня не участвовал в паре.")
+            return
+
+        fsm_context = dispatcher.fsm.get_context(user_id=telegram_id, chat_id=telegram_id, bot=bot)
+
+        # Отправка сообщения
+        await bot.send_message(
+            telegram_id,
+            "Привет! Прошла ли встреча?",
+            reply_markup=meeting_question_kb(pair_id)
+        )
+
+        # Ставим состояние ожидания ответа
+        await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
 
 # отображение когда сформируются пары и опрос как прошла встреча
 def show_next_runs(scheduler: AsyncIOScheduler):
@@ -299,37 +326,60 @@ async def reload_scheduled_jobs(bot: Bot, session_maker, dispatcher: Dispatcher)
     scheduler.remove_all_jobs()
     await schedule_feedback_jobs(bot, session_maker, dispatcher)
 
+async def feedback_dispatcher_job(bot: Bot, session_maker, dispatcher: Dispatcher):
+    async with session_maker() as session:
+        # Получаем дату последней встречи
+        latest_date_result = await session.execute(
+            select(func.max(func.date(Pair.paired_at)))
+        )
+        latest_date = latest_date_result.scalar()
+        if not latest_date:
+            print("❗ Нет зафиксированных пар — опрос не запущен.")
+            return
+
+        # Получаем все пары этой даты
+        result_pairs = await session.execute(
+            select(Pair).where(func.date(Pair.paired_at) == latest_date)
+        )
+        pairs = result_pairs.scalars().all()
+
+
+        for pair in pairs:
+            user_ids = [pair.user1_id, pair.user2_id]
+            if pair.user3_id:
+                user_ids.append(pair.user3_id)
+
+            result_users = await session.execute(
+                select(User).where(User.id.in_(user_ids), User.is_active == True)
+            )
+            users = result_users.scalars().all()
+
+            for user in users:
+                try:
+                    fsm_context = dispatcher.fsm.get_context(user_id=user.telegram_id, chat_id=user.telegram_id, bot=bot)
+                    await bot.send_message(
+                        user.telegram_id,
+                        "Привет! Прошла ли встреча?",
+                        reply_markup=meeting_question_kb(pair.id)
+                    )
+                    await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
+
+                except Exception as e:
+                    print(f"⚠️ Не удалось отправить опрос для {user.telegram_id}: {e}")
+
 async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
     async def setup_jobs():
-        async with session_maker() as session:
-            setting_result = await session.execute(
-                select(Setting.value).where(Setting.key == "global_interval")
-            )
-            setting_value = setting_result.scalar()
-            print(f"⚙️ Загружен новый интервал: {setting_value} минут")  # <--- добавлено
-
-            if setting_value is None:
-                setting_value = 2  # по умолчанию
-            interval_weeks = setting_value
-            interval_day = interval_weeks * 7 - 3
-
-            users_result = await session.execute(
-                select(User.telegram_id).where(User.is_active == True)
-            )
-            telegram_ids = users_result.scalars().all()
-
-            for telegram_id in telegram_ids:
-                scheduler.add_job(
-                    start_feedback_prompt,
-                    trigger=IntervalTrigger(seconds=20),
-                    args=[bot, telegram_id, dispatcher],
-                    id=f"feedback_{telegram_id}",
-                    replace_existing=True,
-                )
+        scheduler.add_job(
+            feedback_dispatcher_job,
+            trigger=IntervalTrigger(seconds=100),
+            args=[bot, session_maker, dispatcher],
+            id="feedback_dispatcher",
+            replace_existing=True,
+        )
 
         scheduler.add_job(
             auto_pairing,
-            trigger=IntervalTrigger(seconds=20),
+            trigger=IntervalTrigger(seconds=180),
             args=[session_maker, bot],
             id="auto_pairing_weekly",
             replace_existing=True
@@ -337,7 +387,7 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
 
         scheduler.add_job(
             reload_scheduled_jobs,
-            trigger=IntervalTrigger(seconds=20),
+            trigger=IntervalTrigger(seconds=180),
             args=[bot, session_maker, dispatcher],
             id="reload_jobs_hourly",
             replace_existing=True

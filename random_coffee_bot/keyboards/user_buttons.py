@@ -75,3 +75,15 @@ def create_inactive_user_keyboard():
         width=1
     )
     return buttons_kb_builder_user.as_markup(resize_keyboard=True)
+
+def meeting_question_kb(pair_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да", callback_data=f"meeting_yes:{pair_id}")],
+        [InlineKeyboardButton(text="❌ Нет", callback_data=f"meeting_no:{pair_id}")]
+    ])
+
+def comment_question_kb(pair_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✍️ Оставить комментарий", callback_data=f"leave_comment:{pair_id}")],
+        [InlineKeyboardButton(text="⏭️ Без комментария", callback_data=f"no_comment:{pair_id}")]
+    ])
