@@ -59,9 +59,9 @@ class Pair(CommonMixin, Base):
     user2_id = Column(Integer, ForeignKey('user.id'), nullable=False)
     user3_id = Column(Integer, ForeignKey('user.id'), nullable=True)
 
-    user1_username = Column(String, nullable=False)
-    user2_username = Column(String, nullable=False)
-    user3_username = Column(String, nullable=True)
+    # user1_username = Column(String, nullable=False)
+    # user2_username = Column(String, nullable=False)
+    # user3_username = Column(String, nullable=True)
 
     #paired_at = Column(Date, default=datetime.utcnow().date, nullable=False)
     paired_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -126,8 +126,8 @@ async def generate_unique_pairs(session, users: list[User]) -> list[Pair]:
         u1, u2 = user_map[u1_id], user_map[u2_id]
         pair = Pair(
             user1_id=u1.id, user2_id=u2.id,
-            user1_username=u1.username,
-            user2_username=u2.username,
+            # user1_username=u1.username,
+            # user2_username=u2.username,
             paired_at=datetime.utcnow()
         )
         u1.last_paired_at = datetime.utcnow()
@@ -321,7 +321,7 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
             for telegram_id in telegram_ids:
                 scheduler.add_job(
                     start_feedback_prompt,
-                    trigger=IntervalTrigger(minutes=setting_value),
+                    trigger=IntervalTrigger(seconds=20),
                     args=[bot, telegram_id, dispatcher],
                     id=f"feedback_{telegram_id}",
                     replace_existing=True,
@@ -329,7 +329,7 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
 
         scheduler.add_job(
             auto_pairing,
-            trigger=IntervalTrigger(minutes=setting_value),
+            trigger=IntervalTrigger(seconds=20),
             args=[session_maker, bot],
             id="auto_pairing_weekly",
             replace_existing=True
@@ -337,7 +337,7 @@ async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher
 
         scheduler.add_job(
             reload_scheduled_jobs,
-            trigger=IntervalTrigger(minutes=setting_value),
+            trigger=IntervalTrigger(seconds=20),
             args=[bot, session_maker, dispatcher],
             id="reload_jobs_hourly",
             replace_existing=True
