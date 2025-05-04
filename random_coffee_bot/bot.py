@@ -1,7 +1,7 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED
-
+from apscheduler.jobstores.base import JobLookupError
 from datetime import datetime
 from random import shuffle
 import random
@@ -9,14 +9,18 @@ from collections import defaultdict
 from keyboards.user_buttons import meeting_question_kb
 from sqlalchemy import select, or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from globals import job_context
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from database.models import User, Pair, Setting, Feedback
 
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(
+        jobstores={'default': SQLAlchemyJobStore(url='sqlite:///jobs.sqlite')},
+        timezone='Europe/Moscow'
+    )
 
 class FeedbackStates(StatesGroup):
     writing_comment = State()
@@ -31,6 +35,18 @@ async def prompt_user_comment(user_id: int):
     await state.set_state(CommentStates.waiting_for_comment)
 
     await bot.send_message(user_id, "Привет! Пожалуйста, оставь комментарий о последней встрече ☕️")
+
+async def feedback_dispatcher_wrapper():
+    bot, dispatcher, session_maker = job_context.get_context()
+    await feedback_dispatcher_job(bot, session_maker, dispatcher)
+
+async def auto_pairing_wrapper():
+    bot, dispatcher, session_maker = job_context.get_context()
+    await auto_pairing(session_maker, bot)
+
+async def reload_jobs_wrapper():
+    bot, dispatcher, session_maker = job_context.get_context()
+    await reload_scheduled_jobs(bot, session_maker, dispatcher)
 
 # ласт пара
 async def get_latest_pair_id_for_user(session: AsyncSession, user_id: int) -> int | None:
@@ -211,7 +227,6 @@ async def notify_users_about_pairs(session: AsyncSession, pairs: list[Pair], bot
                 print(f"⚠️ Не удалось отправить сообщение для user_id={user_id}: {e}")
 
 
-
 async def auto_pairing(session_maker, bot: Bot):
     async with session_maker() as session:
         users = await get_users_ready_for_matching(session)
@@ -307,27 +322,52 @@ def job_listener(event):
     show_next_runs(scheduler)
 
 async def reload_scheduled_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
-    print("♻️ Перезапуск запланированных задач...")
-    scheduler.remove_all_jobs()
-    await schedule_feedback_jobs(bot, session_maker, dispatcher)
+    print("♻️ Проверка и запуск задач...")
+
+    # Получаем настройки
+    async with session_maker() as session:
+        result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
+        setting = result.scalar_one_or_none()
+        interval_weeks = setting.value if setting and setting.value else 2
+
+    # Пытаемся обновить / добавить задачи, только если их нет
+    def ensure_job(job_id: str, func, trigger):
+        try:
+            scheduler.get_job(job_id)
+            print(f"✅ Задача '{job_id}' уже существует.")
+        except JobLookupError:
+            print(f"➕ Добавляем задачу '{job_id}'...")
+            scheduler.add_job(
+                func,
+                trigger=trigger,
+                id=job_id,
+                replace_existing=False,
+            )
+
+    ensure_job("feedback_dispatcher", feedback_dispatcher_wrapper,
+               IntervalTrigger(minutes=interval_weeks))
+    ensure_job("auto_pairing_weekly", auto_pairing_wrapper,
+               IntervalTrigger(minutes=interval_weeks))
+    ensure_job("reload_jobs_hourly", reload_jobs_wrapper,
+               IntervalTrigger(minutes=interval_weeks))
+
+    if not scheduler.running:
+        scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
+        scheduler.start()
+
+    show_next_runs(scheduler)
 
 async def feedback_dispatcher_job(bot: Bot, session_maker, dispatcher: Dispatcher):
     async with session_maker() as session:
-        # Получаем дату последней встречи
-        latest_date_result = await session.execute(
-            select(func.max(func.date(Pair.paired_at)))
-        )
-        latest_date = latest_date_result.scalar()
-        if not latest_date:
-            print("❗ Нет зафиксированных пар — опрос не запущен.")
-            return
-
-        # Получаем все пары этой даты
+        # Получаем все пары, которым еще не отправляли опрос
         result_pairs = await session.execute(
-            select(Pair).where(func.date(Pair.paired_at) == latest_date)
+            select(Pair).where(Pair.feedback_sent == False)
         )
         pairs = result_pairs.scalars().all()
 
+        if not pairs:
+            print("ℹ️ Нет новых пар для отправки опроса.")
+            return
 
         for pair in pairs:
             user_ids = [pair.user1_id, pair.user2_id]
@@ -341,39 +381,49 @@ async def feedback_dispatcher_job(bot: Bot, session_maker, dispatcher: Dispatche
 
             for user in users:
                 try:
-                    #fsm_context = dispatcher.fsm.get_context(user_id=user.telegram_id, chat_id=user.telegram_id, bot=bot)
                     await bot.send_message(
                         user.telegram_id,
                         "Привет! Прошла ли встреча?",
                         reply_markup=meeting_question_kb(pair.id)
                     )
-                    #await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
-
                 except Exception as e:
                     print(f"⚠️ Не удалось отправить опрос для {user.telegram_id}: {e}")
 
-async def schedule_feedback_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
+            # Отмечаем, что опрос для этой пары отправлен
+            pair.feedback_sent = True
+
+        # Сохраняем изменения
+        await session.commit()
+
+
+
+async def schedule_feedback_jobs(session_maker):
+    async with session_maker() as session:
+        result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
+        setting = result.scalar_one_or_none()
+
+        start_date = setting.first_matching_date if setting and setting.first_matching_date else datetime.utcnow()
+        interval_weeks = setting.value if setting and setting.value else 2
+        interval_day = interval_weeks * 7 - 3
+        # trigger=IntervalTrigger(minutes=interval_weeks-1, start_date=start_date),
     async def setup_jobs():
         scheduler.add_job(
-            feedback_dispatcher_job,
-            trigger=IntervalTrigger(seconds=100),
-            args=[bot, session_maker, dispatcher],
+            feedback_dispatcher_wrapper,
+            trigger=IntervalTrigger(minutes=interval_weeks, start_date=start_date),
             id="feedback_dispatcher",
             replace_existing=True,
         )
 
         scheduler.add_job(
-            auto_pairing,
-            trigger=IntervalTrigger(seconds=160),
-            args=[session_maker, bot],
+            auto_pairing_wrapper,
+            trigger=IntervalTrigger(minutes=interval_weeks, start_date=start_date),
             id="auto_pairing_weekly",
             replace_existing=True
         )
 
         scheduler.add_job(
-            reload_scheduled_jobs,
-            trigger=IntervalTrigger(seconds=160),
-            args=[bot, session_maker, dispatcher],
+            reload_jobs_wrapper,
+            trigger=IntervalTrigger(minutes=interval_weeks, start_date=start_date),
             id="reload_jobs_hourly",
             replace_existing=True
         )

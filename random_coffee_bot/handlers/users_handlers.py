@@ -34,6 +34,7 @@ from keyboards.user_buttons import (
     comment_question_kb
 )
 
+from random_coffee_bot.bot import CommentStates
 from random_coffee_bot.states.user_states import FSMUserForm
 
 from bot import  FeedbackStates
@@ -470,11 +471,12 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
     if action == "no_comment":
         await callback.message.answer("Спасибо! Отзыв учтён ✅")
     else:
+        await state.set_state(CommentStates.waiting_for_comment)
         await state.update_data(pair_id=int(pair_id))
         await callback.message.answer("Введите комментарий:")
 
 # --- Обработка комментария ---
-@user_router.message(F.text)
+@user_router.message(CommentStates.waiting_for_comment, F.text)
 async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
     session_maker = kwargs["session_maker"]
     user_id = message.from_user.id
@@ -492,9 +494,9 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
     await state.clear()
 
 
-# --- Обработка /cancel ---
-# @user_router.message(F.text == "/cancel")
-# async def cancel_feedback(message: types.Message, state: FSMContext):
-#     await state.clear()
-#     await message.answer("Действие отменено ❌")
+#--- Обработка /cancel ---
+@user_router.message(F.text == "/cancel")
+async def cancel_feedback(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Действие отменено ❌")
 

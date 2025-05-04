@@ -7,7 +7,7 @@ from config import Config, load_config
 from handlers.admin_handlers import admin_router
 from handlers.users_handlers import user_router
 from middlewares import AccessMiddleware
-
+from globals import job_context
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ async def main():
         token=config.tg_bot.token
     )
     dp = Dispatcher()
+    job_context.set_context(bot, dp, session_maker)
     dp.workflow_data.update({
         'group_tg_id': group_tg_id,
         'session_maker': session_maker,
