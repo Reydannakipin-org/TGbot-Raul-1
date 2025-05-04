@@ -12,8 +12,6 @@ from aiogram.types import (
     ReplyKeyboardRemove
 )
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy import select, or_, desc, update
 
 from database.db import AsyncSessionLocal
 from database.models import User, Pair, Feedback
@@ -39,7 +37,6 @@ from random_coffee_bot.states.user_states import FSMUserForm
 
 from bot import  FeedbackStates
 
-from random_coffee_bot.texts import KEYBOARD_BUTTON_TEXTS
 
 logger = logging.getLogger(__name__)
 
@@ -441,11 +438,6 @@ async def process_clean_keyboards(message: Message, state: FSMContext):
     await message.answer('Убираем клаву',
                          reply_markup=ReplyKeyboardRemove())
 
-# пока дропнул так как она перехватывает текст для отправки коментария
-# @user_router.message(F.text)
-# async def fallback_handler(message: Message):
-#     await message.answer('Я не знаю такой команды. '
-#                          'Пожалуйста, используй клавиатуру.')
 
 
 # --- Ответ: Да/Нет встреча ---
@@ -492,7 +484,16 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
     comment_text = message.text.strip()
 
     # Тексты, которые используются на кнопках и не должны быть комментариями
-    button_texts = KEYBOARD_BUTTON_TEXTS
+    button_texts = ['📋 Список участников',
+    '👥 Управление участниками',
+    '📊 Выгрузить в гугл таблицу',
+    '🤝 Изменить интервал',
+    '✏️ Изменить мои данные',
+    '📊 Мой статус участия',
+    '🗓️ Изменить частоту встреч',
+    '⏸️ Приостановить участие',
+    '❓ Как работает Random Coffee?',
+    '▶️ Возобновить участие',]
 
     if comment_text in button_texts:
         await message.answer("Пожалуйста, введите комментарий вручную, а не выбирайте кнопку.")
@@ -509,6 +510,7 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
     await message.answer(status_msg)
     await state.clear()
 
-
-
-
+@user_router.message(F.text)
+async def fallback_handler(message: Message):
+    await message.answer('Я не знаю такой команды. '
+                         'Пожалуйста, используй клавиатуру.')
