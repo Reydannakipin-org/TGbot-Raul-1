@@ -34,7 +34,7 @@ class User(CommonMixin, Base):
 
     pairing_interval = Column(Integer, nullable=True)  # индивидуальный интервал (в днях)
     last_paired_at = Column(Date, nullable=True)
-    future_meeting = Column(Integer, default=0)
+    future_meeting = Column(Integer, default=1)
     pause_until = Column(Date, nullable=True)
     joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

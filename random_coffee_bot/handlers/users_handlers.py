@@ -39,6 +39,8 @@ from random_coffee_bot.states.user_states import FSMUserForm
 
 from bot import  FeedbackStates
 
+from random_coffee_bot.texts import KEYBOARD_BUTTON_TEXTS
+
 logger = logging.getLogger(__name__)
 
 user_router = Router()
@@ -473,14 +475,28 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
     else:
         await state.set_state(CommentStates.waiting_for_comment)
         await state.update_data(pair_id=int(pair_id))
-        await callback.message.answer("Введите комментарий:")
+        await callback.message.answer("Введите комментарий (или отправьте /cancel для отмены):")
+
+#--- Обработка /cancel ---
+@user_router.message(F.text == "/cancel")
+async def cancel_feedback(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Действие отменено ❌")
+
 
 # --- Обработка комментария ---
 @user_router.message(CommentStates.waiting_for_comment, F.text)
 async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
     session_maker = kwargs["session_maker"]
     user_id = message.from_user.id
-    comment_text = message.text
+    comment_text = message.text.strip()
+
+    # Тексты, которые используются на кнопках и не должны быть комментариями
+    button_texts = KEYBOARD_BUTTON_TEXTS
+
+    if comment_text in button_texts:
+        await message.answer("Пожалуйста, введите комментарий вручную, а не выбирайте кнопку.")
+        return
 
     data = await state.get_data()
     pair_id = data.get("pair_id")
@@ -494,9 +510,5 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
     await state.clear()
 
 
-#--- Обработка /cancel ---
-@user_router.message(F.text == "/cancel")
-async def cancel_feedback(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Действие отменено ❌")
+
 
