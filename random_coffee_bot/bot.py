@@ -2,7 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED
 from apscheduler.jobstores.base import JobLookupError
-from datetime import datetime
+from datetime import datetime, timedelta
 from random import shuffle
 import random
 from collections import defaultdict
@@ -44,9 +44,9 @@ async def auto_pairing_wrapper():
     bot, dispatcher, session_maker = job_context.get_context()
     await auto_pairing(session_maker, bot)
 
-async def reload_jobs_wrapper():
-    bot, dispatcher, session_maker = job_context.get_context()
-    await reload_scheduled_jobs(bot, session_maker, dispatcher)
+# async def reload_jobs_wrapper():
+#     bot, dispatcher, session_maker = job_context.get_context()
+#     await reload_scheduled_jobs(bot, session_maker, dispatcher)
 
 # ласт пара
 async def get_latest_pair_id_for_user(session: AsyncSession, user_id: int) -> int | None:
@@ -321,41 +321,41 @@ def show_next_runs(scheduler: AsyncIOScheduler):
 def job_listener(event):
     show_next_runs(scheduler)
 
-async def reload_scheduled_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
-    print("♻️ Проверка и запуск задач...")
-
-    # Получаем настройки
-    async with session_maker() as session:
-        result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
-        setting = result.scalar_one_or_none()
-        interval_weeks = setting.value if setting and setting.value else 2
-
-    # Пытаемся обновить / добавить задачи, только если их нет
-    def ensure_job(job_id: str, func, trigger):
-        try:
-            scheduler.get_job(job_id)
-            print(f"✅ Задача '{job_id}' уже существует.")
-        except JobLookupError:
-            print(f"➕ Добавляем задачу '{job_id}'...")
-            scheduler.add_job(
-                func,
-                trigger=trigger,
-                id=job_id,
-                replace_existing=False,
-            )
-
-    ensure_job("feedback_dispatcher", feedback_dispatcher_wrapper,
-               IntervalTrigger(minutes=interval_weeks))
-    ensure_job("auto_pairing_weekly", auto_pairing_wrapper,
-               IntervalTrigger(minutes=interval_weeks))
-    ensure_job("reload_jobs_hourly", reload_jobs_wrapper,
-               IntervalTrigger(minutes=interval_weeks))
-
-    if not scheduler.running:
-        scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
-        scheduler.start()
-
-    show_next_runs(scheduler)
+# async def reload_scheduled_jobs(bot: Bot, session_maker, dispatcher: Dispatcher):
+#     print("♻️ Проверка и запуск задач...")
+#
+#     # Получаем настройки
+#     async with session_maker() as session:
+#         result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
+#         setting = result.scalar_one_or_none()
+#         interval_weeks = setting.value if setting and setting.value else 2
+#
+#     # Пытаемся обновить / добавить задачи, только если их нет
+#     def ensure_job(job_id: str, func, trigger):
+#         try:
+#             scheduler.get_job(job_id)
+#             print(f"✅ Задача '{job_id}' уже существует.")
+#         except JobLookupError:
+#             print(f"➕ Добавляем задачу '{job_id}'...")
+#             scheduler.add_job(
+#                 func,
+#                 trigger=trigger,
+#                 id=job_id,
+#                 replace_existing=False,
+#             )
+#
+#     ensure_job("feedback_dispatcher", feedback_dispatcher_wrapper,
+#                IntervalTrigger(minutes=interval_weeks))
+#     ensure_job("auto_pairing_weekly", auto_pairing_wrapper,
+#                IntervalTrigger(minutes=interval_weeks))
+#     ensure_job("reload_jobs_hourly", reload_jobs_wrapper,
+#                IntervalTrigger(minutes=interval_weeks))
+#
+#     if not scheduler.running:
+#         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
+#         scheduler.start()
+#
+#     show_next_runs(scheduler)
 
 async def feedback_dispatcher_job(bot: Bot, session_maker, dispatcher: Dispatcher):
     async with session_maker() as session:
@@ -402,37 +402,46 @@ async def schedule_feedback_jobs(session_maker):
         result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
         setting = result.scalar_one_or_none()
 
+        interval_minutes = int(setting.value) if setting and setting.value else 2
         start_date = setting.first_matching_date if setting and setting.first_matching_date else datetime.utcnow()
-        interval_weeks = setting.value if setting and setting.value else 2
-        interval_day = interval_weeks * 7 - 3
-        # trigger=IntervalTrigger(minutes=interval_weeks-1, start_date=start_date),
-    async def setup_jobs():
-        scheduler.add_job(
-            feedback_dispatcher_wrapper,
-            trigger=IntervalTrigger(minutes=interval_weeks, start_date=start_date),
-            id="feedback_dispatcher",
-            replace_existing=True,
-        )
-
-        scheduler.add_job(
-            auto_pairing_wrapper,
-            trigger=IntervalTrigger(minutes=interval_weeks, start_date=start_date),
-            id="auto_pairing_weekly",
-            replace_existing=True
-        )
-
-        scheduler.add_job(
-            reload_jobs_wrapper,
-            trigger=IntervalTrigger(minutes=interval_weeks, start_date=start_date),
-            id="reload_jobs_hourly",
-            replace_existing=True
-        )
-
-    await setup_jobs()
 
     if not scheduler.running:
         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
-        scheduler.start()
+        scheduler.start()  # Сначала инициализируем scheduler (загрузит jobstore из БД)
+
+    def schedule_or_reschedule(job_id, func, interval_minutes):
+        job = scheduler.get_job(job_id)
+
+        if job:
+            current_interval = job.trigger.interval.total_seconds() / 60
+            if int(current_interval) == interval_minutes:
+                print(f"✅ '{job_id}' уже запланирована с тем же интервалом.")
+                return
+
+            print(f"♻️ Интервал '{job_id}' изменился. Перезапускаем...")
+
+            next_time = job.next_run_time or datetime.utcnow()
+            scheduler.remove_job(job_id)
+
+            scheduler.add_job(
+                func,
+                trigger=IntervalTrigger(minutes=interval_minutes, start_date=next_time),
+                id=job_id,
+                replace_existing=True,
+            )
+            print(f"🆕 '{job_id}' пересоздана. Старт: {next_time}")
+        else:
+            print(f"➕ '{job_id}' не существует. Создаём заново.")
+            scheduler.add_job(
+                func,
+                trigger=IntervalTrigger(minutes=interval_minutes, start_date=start_date),
+                id=job_id,
+                replace_existing=False,
+            )
+
+    # Запуск задач — только после старта планировщика!
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, interval_minutes)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, interval_minutes)
 
     show_next_runs(scheduler)
 
