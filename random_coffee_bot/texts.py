@@ -1,5 +1,4 @@
 # flake8: noqa
-NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:-[A-Za-zА-Яа-яЁё]+)*$'
 TEXTS = {
     'deny_access': 'Извините, доступ к боту разрешён только участникам корпоративной группы.',
     'error_access': 'Произошла ошибка при проверке доступа. Попробуйте позже.',
@@ -76,7 +75,7 @@ USER_TEXTS = {
     'participation_status': 'Имя: {first_name} \nФамилия: {last_name} \nЧастота встреч: {interval} \nСтатус: {status}',
     'update_full_name': 'Твои текущие данные: \nИмя: {first_name} \nФамилия: {last_name} \n\nТы уверен, что хочешь узменить их?',
     'no_update': 'Изминение данных отменено',
-    'random_coffee_bot': 'Random Coffee предназначен для знакомства и общения коллег. Раз в 2 '
+    'random_coffee_bot': 'Random Coffee предназначен для знакомства и общения коллег. 1 раз в {admin_interval} '
 'недели я подбираю тебе случайного коллегу и присылаю вам контакты друг '
 'друга. А дальше вы договариваетесь о созвоне или личной встрече, когда '
 'вам обоим будет удобно.\n\nТы можешь изменить то, как часто я буду '
@@ -111,7 +110,7 @@ KEYBOARD_BUTTON_TEXTS = {
 INLINE_BUTTON_TEXTS = {
     'yes': 'Да',
     'no': 'Нет',
-    'set_has_permission_false': 'Запретить полurrent_intervalьзоваться ботом',
+    'set_has_permission_false': 'Запретить пользоваться ботом',
     'set_has_permission_true': 'Разрешить пользоваться ботом',
     'set_pause': 'Поставить на паузу',
     'cancel': 'Отменить'

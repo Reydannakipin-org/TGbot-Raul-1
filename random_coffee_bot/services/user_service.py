@@ -2,12 +2,10 @@ from typing import Optional
 import logging
 
 from sqlalchemy import select
-from database.models import Setting
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
-from datetime import date
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import User
+from database.models import Setting, User
 from texts import ADMIN_TEXTS, INTERVAL_TEXTS, USER_TEXTS
 
 logger = logging.getLogger(__name__)
@@ -80,56 +78,6 @@ async def set_user_active(session: AsyncSession,
         raise e
 
 
-async def set_user_pairing_interval(
-    session: AsyncSession,
-    telegram_id: int,
-    pairing_interval: int
-) -> bool:
-    '''Изменяет значение поля pairing_interval для пользователя.
-    Возвращает True, если пользователь найден и обновлен.'''
-    try:
-        user = await get_user_by_telegram_id(session, telegram_id)
-        if not user:
-            return False
-
-        # Убедитесь, что pairing_interval - это допустимое значение
-        if pairing_interval not in [2, 3, 4]:  # или другие допустимые значения
-            raise ValueError(
-                "Недопустимое значение интервала. Допустимые значения: 2, 3 или 4."
-            )
-
-        user.pairing_interval = pairing_interval
-        await session.commit()
-        return True
-    except SQLAlchemyError as e:
-        await session.rollback()
-        raise e
-    except ValueError as ve:
-        # Обработка недопустимого значения интервала
-        logging.error(f"Ошибка при установке интервала: {ve}")
-        return False
-
-
-async def set_user_permission(session: AsyncSession,
-                              telegram_id: int,
-                              has_permission: bool
-                              ) -> bool:
-    '''Изменяет значение флага has_permission.
-    Возвращает True, если пользователь найден и обновлен.'''
-    try:
-        user = await get_user_by_telegram_id(session, telegram_id)
-        if not user:
-            return False
-        user.has_permission = has_permission
-        if not has_permission:
-            user.is_active = False
-        await session.commit()
-        return True
-    except SQLAlchemyError as e:
-        await session.rollback()
-        raise e
-
-
 async def delete_user(session: AsyncSession, telegram_id: int) -> bool:
     '''Служебная функция на время разработки.
     Удаляет пользователя из БД.'''
@@ -145,18 +93,14 @@ async def delete_user(session: AsyncSession, telegram_id: int) -> bool:
         raise e
 
 
-async def get_user_full_name_message(
-    session: AsyncSession, user_id: int
-) -> str:
+async def create_text_random_coffee(session: AsyncSession):
     '''
-    Формирует сообщение с именем и фамилией пользователя.
+    Создает текст для описание проекта Random_coffee.
     '''
-    first_name = await get_first_name_user(session, user_id)
-    last_name = await get_last_name_user(session, user_id)
+    interval = await get_global_interval(session)
 
-    message = USER_TEXTS['update_full_name'].format(
-        first_name=first_name,
-        last_name=last_name
+    message = USER_TEXTS['random_coffee_bot'].format(
+        admin_interval=interval
     )
     return message
 
@@ -167,75 +111,37 @@ async def create_text_status_active(
     '''
     Создает текст с информацией для кнопки "Мой статус участия".
     '''
+    user = await get_user_by_telegram_id(session, user_id)
 
-    first_name = await get_first_name_user(session, user_id)
-    last_name = await get_last_name_user(session, user_id)
-    meetings = await get_meetings(session, user_id)
-    status = await get_status_active(session, user_id)
+    if user is None:
+        return "Пользователь не найден."
 
-    # Формируем статус активности
+    first_name = user.first_name or "Не указано"
+    last_name = user.last_name or "Не указано"
+    meetings = user.pairing_interval
+    status = user.is_active
+
     status_text = "Активен" if status else "Неактивен"
-    interval_text = INTERVAL_TEXTS.get(str(meetings), INTERVAL_TEXTS['default'])
+    interval_text = (
+        INTERVAL_TEXTS.get(str(meetings),
+                           INTERVAL_TEXTS['default'])
+    )
 
-    # Если частота встреч по умолчанию, получаем интервал от администратора
     if interval_text == INTERVAL_TEXTS['default']:
         admin_interval = await get_global_interval(session)
-        interval_text = INTERVAL_TEXTS.get(str(admin_interval), INTERVAL_TEXTS['default'])
+        interval_text = (
+            INTERVAL_TEXTS.get(str(admin_interval),
+                               INTERVAL_TEXTS['default'])
+            )
 
     message = USER_TEXTS['participation_status'].format(
-        first_name=first_name or "Не указано",
-        last_name=last_name or "Не указано",
+        first_name=first_name,
+        last_name=last_name,
         interval=interval_text,
         status=status_text
     )
 
     return message
-
-
-async def get_first_name_user(
-    session: AsyncSession, user_id: int
-) -> str | None:
-    '''
-    Возвращает имя пользователя по его ID.
-    '''
-    result = await session.execute(
-        select(User.first_name).where(User.telegram_id == user_id)
-    )
-    return result.scalar()
-
-
-async def get_last_name_user(
-    session: AsyncSession, user_id: int
-) -> str | None:
-    '''
-    Возвращает фамилию пользователя по его ID.
-    '''
-    result = await session.execute(
-        select(User.last_name).where(User.telegram_id == user_id)
-    )
-    return result.scalar()
-
-
-async def get_meetings(
-    session: AsyncSession, user_id: int
-) -> int | None:
-    '''
-    Возвращает количество встреч пользователя по его ID.
-    '''
-    result = await session.execute(
-        select(User.pairing_interval).where(User.telegram_id == user_id)
-    )
-    return result.scalar()
-
-
-async def get_status_active(session: AsyncSession, user_id: int) -> bool | None:
-    '''
-    Возвращает статус активности пользователя по его ID.
-    '''
-    result = await session.execute(
-        select(User.is_active).where(User.telegram_id == user_id)
-    )
-    return result.scalar()
 
 
 async def create_text_with_default_interval(
@@ -250,11 +156,19 @@ async def create_text_with_default_interval(
 
     if user_current_interval is not None:
         user_key = str(user_current_interval)
-        user_interval_text = INTERVAL_TEXTS.get(user_key) if user_key else ADMIN_TEXTS['no_data']
+        user_interval_text = (
+            INTERVAL_TEXTS.get(user_key)
+            if user_key
+            else ADMIN_TEXTS['no_data']
+        )
     else:
         user_current_interval = admin_current_interval
         user_key = str(user_current_interval)
-        user_interval_text = INTERVAL_TEXTS.get(user_key) if user_key else ADMIN_TEXTS['no_data']
+        user_interval_text = (
+            INTERVAL_TEXTS.get(user_key)
+            if user_key
+            else ADMIN_TEXTS['no_data']
+        )
 
     data_text = text.format(
         current_interval=user_interval_text
@@ -272,10 +186,10 @@ async def create_text_with_interval(
     admin_current_interval = await get_global_interval(session)
     user_current_interval = await get_user_interval(session, user_id)
 
-
-    # Получаем текст для интервала администратора
     admin_interval_text = (
-        INTERVAL_TEXTS.get(str(admin_current_interval)) if admin_current_interval else ADMIN_TEXTS['no_data']
+        INTERVAL_TEXTS.get(str(admin_current_interval))
+        if admin_current_interval
+        else ADMIN_TEXTS['no_data']
     )
 
     if user_current_interval is not None:
@@ -331,7 +245,8 @@ async def set_new_user_interval(
     Изменяет значение интервала для конкретного пользователя в таблице users.
     '''
     logger.info(
-        f"Попытка установить новый pairing_interval: {new_value} для пользователя с id {user_id}"
+        f"Попытка установить новый pairing_interval: "
+        f"{new_value} для пользователя с id {user_id}"
     )
 
     try:
@@ -345,18 +260,20 @@ async def set_new_user_interval(
             raise ValueError(f'Пользователь с id {user_id} не найден')
 
         logger.info(
-            f"Обновлённое значение pairing_interval для пользователя до изменения: {updated_user.pairing_interval}"
+            f"Обновлённое значение pairing_interval для пользователя до "
+            f"изменения: {updated_user.pairing_interval}"
         )
 
-        updated_user.pairing_interval = new_value  # Обновляем значение
-        await session.commit()  # Коммит изменений
+        updated_user.pairing_interval = new_value
+        await session.commit()
 
         logger.info(
-            f'pairing_interval для пользователя с id {user_id} обновлён на {new_value}'
+            f"pairing_interval для пользователя с id "
+            f"{user_id} обновлён на {new_value}"
         )
 
     except SQLAlchemyError as e:
-        await session.rollback()  # Откат в случае ошибки
+        await session.rollback()
         logger.exception(
             'Ошибка при установке нового интервала для пользователя'
         )

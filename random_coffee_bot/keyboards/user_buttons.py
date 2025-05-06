@@ -6,7 +6,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from texts import (KEYBOARD_BUTTON_TEXTS,
                    INLINE_BUTTON_TEXTS,
                    INTERVAL_TEXTS,
-                   USER_TEXTS,
                    )
 
 button_change_my_details = KeyboardButton(
@@ -100,7 +99,7 @@ def create_inactive_user_keyboard():
 
 async def generate_inline_interval(session: AsyncSession):
     admin_interval = await get_global_interval(session)
-    text = f'По умолчанию: {admin_interval} раза в неделю'
+    text = f'По умолчанию: 1 раз в {admin_interval} недели'
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
