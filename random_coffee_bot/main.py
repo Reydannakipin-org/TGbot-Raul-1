@@ -24,13 +24,15 @@ async def main():
     config: Config = load_config()
     group_tg_id = config.tg_bot.group_tg_id
     admin_id = config.tg_bot.admin_tg_id
+    google_sheet_id = config.g_sheet.sheet_id
 
     bot = Bot(
         token=config.tg_bot.token
     )
     dp = Dispatcher()
     dp.workflow_data.update({'group_tg_id': group_tg_id,
-                             'admin_id': admin_id})
+                             'admin_id': admin_id,
+                             'google_sheet_id': google_sheet_id})
 
     dp.update.middleware(AccessMiddleware())
     dp.include_router(admin_router)

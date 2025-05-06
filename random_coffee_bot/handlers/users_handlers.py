@@ -4,7 +4,7 @@ from aiogram import F, Router
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
-from aiogram.types import Message, ReplyKeyboardRemove, CallbackQuery
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy.exc import SQLAlchemyError
 
 # Импорт базы данных и сервисов
