@@ -224,6 +224,7 @@ async def notify_users_about_pairs(session: AsyncSession, pairs: list[Pair], bot
 
             try:
                 await bot.send_message(chat_id=user_info["telegram_id"], text=message, parse_mode="HTML")
+                await asyncio.sleep(3)
             except Exception as e:
                 print(f"⚠️ Не удалось отправить сообщение для user_id={user_id}: {e}")
 
@@ -366,7 +367,6 @@ def job_listener(event):
 
 async def feedback_dispatcher_job(bot: Bot, session_maker):
     async with session_maker() as session:
-        # Получаем все пары, которым еще не отправляли опрос
         result_pairs = await session.execute(
             select(Pair).where(Pair.feedback_sent == False)
         )
@@ -382,10 +382,11 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
                 user_ids.append(pair.user3_id)
 
             result_users = await session.execute(
-                select(User).where(User.id.in_(user_ids), User.has_permission  == True)
+                select(User).where(User.id.in_(user_ids), User.has_permission == True)
             )
             users = result_users.scalars().all()
 
+            success = True
             for user in users:
                 try:
                     await bot.send_message(
@@ -393,14 +394,15 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
                         "Привет! Прошла ли встреча?",
                         reply_markup=meeting_question_kb(pair.id)
                     )
-                    await asyncio.sleep(60)
+                    await asyncio.sleep(10)
                 except Exception as e:
                     print(f"⚠️ Не удалось отправить опрос для {user.telegram_id}: {e}")
+                    success = False  # хотя бы одному не отправили
 
-            # Отмечаем, что опрос для этой пары отправлен
-            pair.feedback_sent = True
+            # Отмечаем только если всем отправлено успешно
+            if success:
+                pair.feedback_sent = True
 
-        # Сохраняем изменения
         await session.commit()
 
 
@@ -413,9 +415,13 @@ async def schedule_feedback_jobs(session_maker):
         interval_minutes = int(setting.value) if setting and setting.value else 2
         start_date = setting.first_matching_date if setting and setting.first_matching_date else datetime.utcnow()
 
+        feedback_minutes = interval_minutes
+        pairing_minutes = interval_minutes +1
+        # feedback_day = interval_minutes * 7 -3
+        # pairing_day = interval_minutes * 7
     if not scheduler.running:
         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
-        scheduler.start()  # Сначала инициализируем scheduler (загрузит jobstore из БД)
+        scheduler.start()
 
     def schedule_or_reschedule(job_id, func, interval_minutes):
         job = scheduler.get_job(job_id)
@@ -447,9 +453,9 @@ async def schedule_feedback_jobs(session_maker):
                 replace_existing=False,
             )
 
-    # Запуск задач — только после старта планировщика!
-    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, interval_minutes)
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, interval_minutes)
+    # Запуск задач — только после старта планировщика! редактор интервала
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, feedback_minutes)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_minutes)
 
     show_next_runs(scheduler)
 
