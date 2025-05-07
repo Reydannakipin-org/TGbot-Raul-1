@@ -12,6 +12,7 @@ from aiogram.types import (
     ReplyKeyboardRemove
 )
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
 
 from database.db import AsyncSessionLocal
 from database.models import User, Pair, Feedback
@@ -29,7 +30,8 @@ from keyboards.user_buttons import (
     create_deactivate_keyboard,
     create_inactive_user_keyboard,
     meeting_question_kb,
-    comment_question_kb
+    comment_question_kb,
+    confirm_edit_comment_kb
 )
 
 from random_coffee_bot.bot import CommentStates
@@ -468,9 +470,39 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
         await state.set_state(CommentStates.waiting_for_comment)
         await state.update_data(pair_id=int(pair_id))
         await callback.message.answer("Введите комментарий (или отправьте /cancel для отмены):")
+#11111
+@user_router.callback_query(F.data.startswith("confirm_edit") | F.data.startswith("cancel_edit"))
+async def handle_edit_decision(callback: types.CallbackQuery, state: FSMContext, **kwargs):
+    await callback.answer()
+    data = callback.data
+    action, pair_id_str = data.split(":")
+    pair_id = int(pair_id_str)
+    session_maker = kwargs["session_maker"]
+    user_id = callback.from_user.id
+
+    if action == "cancel_edit":
+        await state.clear()
+        await callback.message.edit_reply_markup()
+        await callback.message.answer("Замена коментария отменена ✅")
+        return
+
+    # confirm_edit
+    state_data = await state.get_data()
+    temp_comment = state_data.get("temp_comment")
+    if not temp_comment:
+        await callback.message.answer("Ошибка: временный комментарий не найден.")
+        await state.clear()
+        return
+
+    status_msg = await save_comment(user_id, temp_comment, session_maker, pair_id, force_update=True)
+
+    await state.clear()
+
+    await callback.message.edit_reply_markup()
+    await callback.message.answer(status_msg)
 
 #--- Обработка /cancel ---
-@user_router.message(F.text == "/cancel")
+@user_router.message(CommentStates.waiting_for_comment, F.text == "/cancel")
 async def cancel_feedback(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Действие отменено ❌")
@@ -483,17 +515,16 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
     user_id = message.from_user.id
     comment_text = message.text.strip()
 
-    # Тексты, которые используются на кнопках и не должны быть комментариями
     button_texts = ['📋 Список участников',
-    '👥 Управление участниками',
-    '📊 Выгрузить в гугл таблицу',
-    '🤝 Изменить интервал',
-    '✏️ Изменить мои данные',
-    '📊 Мой статус участия',
-    '🗓️ Изменить частоту встреч',
-    '⏸️ Приостановить участие',
-    '❓ Как работает Random Coffee?',
-    '▶️ Возобновить участие',]
+                    '👥 Управление участниками',
+                    '📊 Выгрузить в гугл таблицу',
+                    '🤝 Изменить интервал',
+                    '✏️ Изменить мои данные',
+                    '📊 Мой статус участия',
+                    '🗓️ Изменить частоту встреч',
+                    '⏸️ Приостановить участие',
+                    '❓ Как работает Random Coffee?',
+                    '▶️ Возобновить участие', ] # как раньше
 
     if comment_text in button_texts:
         await message.answer("Пожалуйста, введите комментарий вручную, а не выбирайте кнопку.")
@@ -501,12 +532,36 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
 
     data = await state.get_data()
     pair_id = data.get("pair_id")
-
     if pair_id is None:
-        await message.answer("Комментарий не принят — не указана пара.")
+        await message.answer("Извини, произошла ошибка при записи комментария. Сообщи об этом админу.")
+        await state.clear()
         return
 
-    status_msg = await save_comment(user_id, comment_text, session_maker, pair_id=int(pair_id))
+    async with session_maker() as session:
+        result_user = await session.execute(
+            select(User).where(User.telegram_id == user_id)
+        )
+        user = result_user.scalar()
+        if user is None:
+            await message.answer("Пользователь не найден.")
+            return
+
+        feedback_query = await session.execute(
+            select(Feedback).where(Feedback.user_id == user.id, Feedback.pair_id == pair_id)
+        )
+        existing_feedback = feedback_query.scalar()
+
+    if existing_feedback and existing_feedback.comment:
+        # Сохраняем временно комментарий и спрашиваем подтверждение
+        await state.update_data(temp_comment=comment_text)
+        await message.answer(
+            "Вы уже оставляли комментарий для этой встречи.\nХотите изменить его?",
+            reply_markup=confirm_edit_comment_kb(pair_id)
+        )
+        return
+
+    # Иначе сохраняем
+    status_msg = await save_comment(user_id, comment_text, session_maker, pair_id)
     await message.answer(status_msg)
     await state.clear()
 

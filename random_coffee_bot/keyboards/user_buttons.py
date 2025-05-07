@@ -87,3 +87,11 @@ def comment_question_kb(pair_id: int):
         [InlineKeyboardButton(text="✍️ Оставить комментарий", callback_data=f"leave_comment:{pair_id}")],
         [InlineKeyboardButton(text="⏭️ Без комментария", callback_data=f"no_comment:{pair_id}")]
     ])
+
+def confirm_edit_comment_kb(pair_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✏️ Да, изменить", callback_data=f"confirm_edit:{pair_id}"),
+            InlineKeyboardButton(text="❌ Нет, оставить", callback_data=f"cancel_edit:{pair_id}")
+        ]
+    ])

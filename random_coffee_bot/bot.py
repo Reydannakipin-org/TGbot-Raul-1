@@ -4,6 +4,7 @@ from apscheduler.events import EVENT_JOB_EXECUTED
 from apscheduler.jobstores.base import JobLookupError
 from datetime import datetime, timedelta
 from random import shuffle
+import asyncio
 import random
 from collections import defaultdict
 from keyboards.user_buttons import meeting_question_kb
@@ -38,7 +39,7 @@ async def prompt_user_comment(user_id: int):
 
 async def feedback_dispatcher_wrapper():
     bot, dispatcher, session_maker = job_context.get_context()
-    await feedback_dispatcher_job(bot, session_maker, dispatcher)
+    await feedback_dispatcher_job(bot, session_maker)
 
 async def auto_pairing_wrapper():
     bot, dispatcher, session_maker = job_context.get_context()
@@ -242,7 +243,13 @@ async def auto_pairing(session_maker, bot: Bot):
 
         await notify_users_about_pairs(session, pairs, bot)
 
-async def save_comment(telegram_id: int, comment_text: str, session_maker: async_sessionmaker, pair_id: int) -> str:
+async def save_comment(
+    telegram_id: int,
+    comment_text: str,
+    session_maker: async_sessionmaker,
+    pair_id: int,
+    force_update: bool = False
+) -> str:
     async with session_maker() as session:
         result_user = await session.execute(
             select(User).where(User.telegram_id == telegram_id)
@@ -262,7 +269,7 @@ async def save_comment(telegram_id: int, comment_text: str, session_maker: async
             feedback.comment = comment_text
             feedback.submitted_at = datetime.utcnow()
             feedback.did_meet = True
-            status_msg = "Комментарий обновлён ✅"
+            status_msg = "Комментарий обновлён ✅" if force_update else "Комментарий добавлен ✅"
         else:
             new_feedback = Feedback(
                 pair_id=pair_id,
@@ -278,36 +285,36 @@ async def save_comment(telegram_id: int, comment_text: str, session_maker: async
         return status_msg
 
 
-async def start_feedback_prompt(bot: Bot, telegram_id: int, dispatcher: Dispatcher, session_maker):
-    async with session_maker() as session:
-        # Получаем пользователя по telegram_id
-        result = await session.execute(
-            select(User).where(User.telegram_id == telegram_id)
-        )
-        user: User | None = result.scalar_one_or_none()
-
-        if not user:
-            print(f"⚠️ Пользователь с telegram_id={telegram_id} не найден.")
-            return
-
-        # Получаем pair_id — ID пары, в которой он участвовал сегодня
-        pair_id = await get_latest_pair_id_for_user(session, user.id)
-
-        if not pair_id:
-            print(f"ℹ️ Пользователь {telegram_id} сегодня не участвовал в паре.")
-            return
-
-        fsm_context = dispatcher.fsm.get_context(user_id=telegram_id, chat_id=telegram_id, bot=bot)
-
-        # Отправка сообщения
-        await bot.send_message(
-            telegram_id,
-            "Привет! Прошла ли встреча?",
-            reply_markup=meeting_question_kb(pair_id)
-        )
-
-        # Ставим состояние ожидания ответа
-        await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
+# async def start_feedback_prompt(bot: Bot, telegram_id: int, dispatcher: Dispatcher, session_maker):
+#     async with session_maker() as session:
+#         # Получаем пользователя по telegram_id
+#         result = await session.execute(
+#             select(User).where(User.telegram_id == telegram_id)
+#         )
+#         user: User | None = result.scalar_one_or_none()
+#
+#         if not user:
+#             print(f"⚠️ Пользователь с telegram_id={telegram_id} не найден.")
+#             return
+#
+#         # Получаем pair_id — ID пары, в которой он участвовал сегодня
+#         pair_id = await get_latest_pair_id_for_user(session, user.id)
+#
+#         if not pair_id:
+#             print(f"ℹ️ Пользователь {telegram_id} сегодня не участвовал в паре.")
+#             return
+#
+#         fsm_context = dispatcher.fsm.get_context(user_id=telegram_id, chat_id=telegram_id, bot=bot)
+#
+#         # Отправка сообщения
+#         await bot.send_message(
+#             telegram_id,
+#             "Привет! Прошла ли встреча?",
+#             reply_markup=meeting_question_kb(pair_id)
+#         )
+#
+#         # Ставим состояние ожидания ответа
+#         await fsm_context.set_state(FeedbackStates.waiting_for_feedback_decision)
 
 # отображение когда сформируются пары и опрос как прошла встреча
 def show_next_runs(scheduler: AsyncIOScheduler):
@@ -357,7 +364,7 @@ def job_listener(event):
 #
 #     show_next_runs(scheduler)
 
-async def feedback_dispatcher_job(bot: Bot, session_maker, dispatcher: Dispatcher):
+async def feedback_dispatcher_job(bot: Bot, session_maker):
     async with session_maker() as session:
         # Получаем все пары, которым еще не отправляли опрос
         result_pairs = await session.execute(
@@ -386,6 +393,7 @@ async def feedback_dispatcher_job(bot: Bot, session_maker, dispatcher: Dispatche
                         "Привет! Прошла ли встреча?",
                         reply_markup=meeting_question_kb(pair.id)
                     )
+                    await asyncio.sleep(60)
                 except Exception as e:
                     print(f"⚠️ Не удалось отправить опрос для {user.telegram_id}: {e}")
 
