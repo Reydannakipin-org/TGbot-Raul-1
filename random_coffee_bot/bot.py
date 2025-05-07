@@ -375,7 +375,7 @@ async def feedback_dispatcher_job(bot: Bot, session_maker, dispatcher: Dispatche
                 user_ids.append(pair.user3_id)
 
             result_users = await session.execute(
-                select(User).where(User.id.in_(user_ids), User.is_active == True)
+                select(User).where(User.id.in_(user_ids), User.has_permission  == True)
             )
             users = result_users.scalars().all()
 
