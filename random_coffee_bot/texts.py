@@ -145,6 +145,7 @@ KEYBOARD_BUTTON_TEXTS = {
     'button_stop_participation': '⏸️ Приостановить участие',
     'button_how_it_works': '❓ Как работает Random Coffee?',
     'button_resume_participation': '▶️ Возобновить участие',
+    'button_send_photo': '📸 Отправить фото'
 }
 
 INLINE_BUTTON_TEXTS = {

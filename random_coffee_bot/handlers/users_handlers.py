@@ -7,6 +7,13 @@ from aiogram.fsm.state import default_state
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy.exc import SQLAlchemyError
 
+import os
+from dotenv import load_dotenv
+from aiogram import types
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+
 # Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
 from services.user_service import (
@@ -42,6 +49,9 @@ from keyboards.user_buttons import (
 
 NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:[-\s][A-Za-zА-Яа-яЁё]+)*$'
 
+load_dotenv()
+
+folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
 
 logger = logging.getLogger(__name__)
 
@@ -656,6 +666,68 @@ async def text_random_coffee(message: Message):
         await message.answer(text)
 
 
+@user_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_send_photo'])
+async def request_photo_handler(message: types.Message, state: FSMContext):
+    await message.answer("Пожалуйста, отправьте ваше фото.")
+    await state.set_state(FSMUserForm.waiting_for_photo)
+
+
+def upload_to_drive(file_path):
+    SCOPES = ['https://www.googleapis.com/auth/drive']
+    SERVICE_ACCOUNT_FILE = 'random_coffee_bot/credentials.json'
+
+    credentials = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+
+    service = build('drive', 'v3', credentials=credentials)
+
+    file_metadata = {
+        'name': os.path.basename(file_path),
+        'parents': [folder_id]
+    }
+
+    media = MediaFileUpload(file_path, mimetype='image/jpeg')
+
+    try:
+        file = service.files().create(
+            body=file_metadata, media_body=media, fields='id'
+        ).execute()
+        return file.get('id')
+    except Exception as e:
+        print(f"Ошибка при загрузке файла: {e}")
+        return None
+
+
+@user_router.message(StateFilter(FSMUserForm.waiting_for_photo))
+async def photo_handler(message: Message, state: FSMContext):
+
+    if not message.photo:
+        await message.answer("Пожалуйста, отправьте только фото.")
+        return
+
+    photo = message.photo[-1]
+    file_id = photo.file_id
+
+    file = await message.bot.get_file(file_id)
+
+    destination = f'./{file_id}.jpg'
+    await message.bot.download_file(file.file_path, destination=destination)
+
+    upload_result = upload_to_drive(destination)
+
+    if upload_result:
+        await message.answer("Фото успешно загружено! 🎉")
+    else:
+        await message.answer(
+            "Произошла ошибка при загрузке фото. "
+            "Пожалуйста, попробуйте еще раз."
+        )
+
+    os.remove(destination)
+
+    await state.clear()
+
+
 #Хэндлер для тестов нужно будет удалить
 @user_router.message(Command(commands='interval'))
 async def set_interval_command(message: Message):
@@ -685,5 +757,5 @@ async def fallback_handler(message: Message):
     так как он улавливает любую команду которую не смогли уловить
     другие хэндлеры.
     '''
-    await message.answer('Я не знаю такой командыrandom_coffee_bot. '
+    await message.answer('Я не знаю такой команды random_coffee_bot. '
                          'Пожалуйста, используй клавиатуру.')

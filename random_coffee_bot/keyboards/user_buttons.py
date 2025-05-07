@@ -23,6 +23,9 @@ button_stop_participation = KeyboardButton(
 button_how_it_works = KeyboardButton(
     text=KEYBOARD_BUTTON_TEXTS['button_how_it_works']
 )
+button_send_photo = KeyboardButton(
+    text=KEYBOARD_BUTTON_TEXTS['button_send_photo']
+)
 
 # Кнопки для неактивных пользователей
 button_resume_participation = KeyboardButton(
@@ -79,6 +82,7 @@ def create_active_user_keyboard():
         button_change_my_details,
         button_my_status,
         button_edit_meetings,
+        button_send_photo,
         button_stop_participation,
         button_how_it_works,
         width=1
