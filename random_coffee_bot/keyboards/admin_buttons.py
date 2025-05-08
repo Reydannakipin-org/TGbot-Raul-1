@@ -157,26 +157,3 @@ def generate_inline_notification_options(notif_id):
             )
         ]
     ])
-
-
-# def generate_inline_notification_options(notif_id):
-#     return InlineKeyboardMarkup(inline_keyboard=[
-#         [
-#             InlineKeyboardButton(
-#                 text=INLINE_BUTTON_TEXTS['confirm_notif'],
-#                 callback_data=(f'confirm_notif:{notif_id}')
-#             )
-#         ],
-#         [
-#             InlineKeyboardButton(
-#                 text=INLINE_BUTTON_TEXTS['edit_notif'],
-#                 callback_data=(f'edit_notif:{notif_id}')
-#             )
-#         ],
-#         [
-#             InlineKeyboardButton(
-#                 text=INLINE_BUTTON_TEXTS['cancel_notif'],
-#                 callback_data=(f'cancel_notif:{notif_id}')
-#             )
-#         ]
-#     ])

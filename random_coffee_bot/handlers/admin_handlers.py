@@ -735,7 +735,8 @@ async def fallback_handler(message: Message):
 @admin_router.message()
 async def other_type_handler(message: Message):
     """
-    Хэндлер срабатывает, когда админ отправляет неизвестную команду или текст.
+    Хэндлер срабатывает, когда админ отправляет что-то кроме текста,
+    что бот не может обработать.
     """
     logger.info('Админ отправил что-то кроме текста.')
     await message.answer(ADMIN_TEXTS['admin_unknown_type_data'],
