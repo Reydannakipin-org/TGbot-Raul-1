@@ -17,6 +17,9 @@ button_google_sheets = KeyboardButton(
     text=KEYBOARD_BUTTON_TEXTS['button_google_sheets'])
 button_change_interval = KeyboardButton(
     text=KEYBOARD_BUTTON_TEXTS['button_change_interval'])
+button_send_notification = KeyboardButton(
+    text=KEYBOARD_BUTTON_TEXTS['button_send_notification']
+)
 
 
 buttons_kb_builder_admin = ReplyKeyboardBuilder()
@@ -25,6 +28,7 @@ buttons_kb_builder_admin.row(
     button_participant_management,
     button_google_sheets,
     button_change_interval,
+    button_send_notification,
     width=1
 )
 
@@ -130,3 +134,49 @@ def generate_inline_interval_options():
             )
         ]
     ])
+
+
+def generate_inline_notification_options(notif_id):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['confirm_notif'],
+                callback_data=(f'confirm_notif:{notif_id}')
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['edit_notif'],
+                callback_data=('edit_notif')
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['cancel_notif'],
+                callback_data=('cancel_notif')
+            )
+        ]
+    ])
+
+
+# def generate_inline_notification_options(notif_id):
+#     return InlineKeyboardMarkup(inline_keyboard=[
+#         [
+#             InlineKeyboardButton(
+#                 text=INLINE_BUTTON_TEXTS['confirm_notif'],
+#                 callback_data=(f'confirm_notif:{notif_id}')
+#             )
+#         ],
+#         [
+#             InlineKeyboardButton(
+#                 text=INLINE_BUTTON_TEXTS['edit_notif'],
+#                 callback_data=(f'edit_notif:{notif_id}')
+#             )
+#         ],
+#         [
+#             InlineKeyboardButton(
+#                 text=INLINE_BUTTON_TEXTS['cancel_notif'],
+#                 callback_data=(f'cancel_notif:{notif_id}')
+#             )
+#         ]
+#     ])

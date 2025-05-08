@@ -1,8 +1,7 @@
 import logging
 from datetime import date, datetime, timedelta
-from typing import Optional
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
@@ -22,13 +21,17 @@ from keyboards.admin_buttons import (buttons_kb_admin,
                                      generate_inline_confirm_change_interval,
                                      generate_inline_confirm_permission_false,
                                      generate_inline_confirm_permission_true,
-                                     generate_inline_interval_options)
-from services.admin_service import (create_pair,
+                                     generate_inline_interval_options,
+                                     generate_inline_notification_options)
+from services.admin_service import (broadcast_notif_to_active_users,
+                                    create_notif,
+                                    create_pair,
                                     create_text_with_interval,
                                     is_valid_date,
                                     format_text_about_user,
                                     get_global_interval,
                                     get_next_pairing_date,
+                                    get_notif,
                                     parse_callback_data,
                                     set_new_global_interval,
                                     set_user_permission,
@@ -146,6 +149,7 @@ async def process_inline_cancel(callback: CallbackQuery):
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
+        return
 
     if user is None:
         logger.info('Пользователя с полученным ID нет в БД.')
@@ -157,6 +161,7 @@ async def process_inline_cancel(callback: CallbackQuery):
         )
         if isinstance(callback.message, Message):
             await callback.message.edit_text(text=data_text)
+    await callback.answer()
 
 
 @admin_router.callback_query(
@@ -170,7 +175,7 @@ async def process_set_has_permission_false(callback: CallbackQuery):
     """
     _, user_telegram_id = parse_callback_data(callback.data)
     logger.info(f'Админ нажал "Запретить пользоваться ботом" '
-                'для юзера {user_telegram_id}')
+                f'для юзера {user_telegram_id}')
 
     try:
         async with AsyncSessionLocal() as session:
@@ -193,6 +198,7 @@ async def process_set_has_permission_false(callback: CallbackQuery):
                 reply_markup=generate_inline_confirm_permission_false(
                     user_telegram_id)
             )
+    await callback.answer()
 
 
 @admin_router.callback_query(
@@ -229,6 +235,7 @@ async def process_confirm_set_has_permission_false(callback: CallbackQuery):
     )
     if isinstance(callback.message, Message):
         await callback.message.edit_text(text=data_text)
+    await callback.answer()
 
 
 @admin_router.callback_query(
@@ -264,6 +271,7 @@ async def process_find_user_by_telegram_id_cb(callback: CallbackQuery):
             await callback.message.edit_text(
                 text=data_text,
                 reply_markup=ikb_participant_management)
+    await callback.answer()
 
 
 @admin_router.callback_query(
@@ -300,6 +308,7 @@ async def process_set_has_permission_true(callback: CallbackQuery):
                 reply_markup=generate_inline_confirm_permission_true(
                     user_telegram_id)
             )
+    await callback.answer()
 
 
 @admin_router.callback_query(
@@ -334,6 +343,7 @@ async def process_confirm_set_has_permission_true(callback: CallbackQuery):
     )
     if isinstance(callback.message, Message):
         await callback.message.edit_text(text=data_text)
+    await callback.answer()
 
 
 @admin_router.callback_query(
@@ -369,6 +379,7 @@ async def process_set_pause(callback: CallbackQuery, state: FSMContext):
                 text=data_text)
         await state.set_state(FSMAdminPanel.waiting_for_end_pause_date)
         await state.update_data(user_telegram_id=user_telegram_id)
+    await callback.answer()
 
 
 @admin_router.message(StateFilter(FSMAdminPanel.waiting_for_end_pause_date),
@@ -480,6 +491,7 @@ async def process_choose_new_interval(callback: CallbackQuery):
             text=ADMIN_TEXTS['choose_interval'],
             reply_markup=generate_inline_interval_options()
         )
+    await callback.answer()
 
 
 @admin_router.callback_query(
@@ -507,6 +519,7 @@ async def process_set_new_interval(callback: CallbackQuery):
 
     if isinstance(callback.message, Message):
         await callback.message.edit_text(text=data_text)
+    await callback.answer()
 
 
 @admin_router.callback_query(F.data == 'cancel_changing_interval',
@@ -530,19 +543,23 @@ async def process_cancel_changing_interval(callback: CallbackQuery):
 
     if isinstance(callback.message, Message):
         await callback.message.edit_text(text=data_text)
+    await callback.answer()
 
 
 # Служебная команда на время разработки
 @admin_router.message(Command(commands='contact'), StateFilter(default_state))
-async def process_contact_command(message: Message):
+async def process_contact_command(message: Message, bot: Bot):
     user_id = 7951238998
     first_name = 'Татьяна'
     last_name = 'Д.'
     text = (f'Контакт твоего коллеги: '
             f'<a href="https://t.me/@id{user_id}">{first_name} {last_name}</a>'
             )
+    text2 = (f'<a href="tg://user?id={user_id}">{first_name}</a>')
 
     await message.answer(text=text, parse_mode='HTML')
+    await message.answer(text=text2, parse_mode='HTML')
+    await bot.send_message(7951238998, 'Тестовое сообщение')
 
 
 @admin_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_google_sheets'],
@@ -595,6 +612,94 @@ async def process_export_to_gsheet(message: Message, google_sheet_id):
         )
 
 
+@admin_router.message(
+        F.text == KEYBOARD_BUTTON_TEXTS['button_send_notification'],
+        StateFilter(default_state))
+async def process_create_notification(message: Message, state: FSMContext):
+    await message.answer(ADMIN_TEXTS['ask_text_for_notif'])
+    await state.set_state(FSMAdminPanel.waiting_for_text_of_notification)
+
+
+@admin_router.message(Command(commands='cancel'),
+                      FSMAdminPanel.waiting_for_text_of_notification)
+async def process_cancel_creating_notif(message: Message, state: FSMContext):
+    await message.answer(ADMIN_TEXTS['cancel_creating_notif'])
+    await state.clear()
+
+
+@admin_router.message(FSMAdminPanel.waiting_for_text_of_notification)
+async def process_get_text_of_notification(message: Message,
+                                           state: FSMContext):
+    if not message.text:
+        await message.answer(ADMIN_TEXTS['reject_no_text'])
+        return
+    else:
+        received_text = message.text.strip()
+    try:
+        async with AsyncSessionLocal() as session:
+            notif = await create_notif(session, received_text)
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+        return
+    confirm_text = (ADMIN_TEXTS['ask_confirm_sending_notif']
+                    .format(notif_text=notif.text))
+    inline_kb = generate_inline_notification_options(notif.id)
+    await state.clear()
+    await message.answer(confirm_text, reply_markup=inline_kb)
+
+
+@admin_router.callback_query(lambda c: c.data.startswith('confirm_notif:'),
+                             StateFilter(default_state))
+async def process_send_notif(callback: CallbackQuery, bot: Bot):
+    await callback.answer()
+    _, notif_id = parse_callback_data(callback.data)
+    try:
+        notif = await get_notif(notif_id)
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        if isinstance(callback.message, Message):
+            await callback.message.answer(ADMIN_TEXTS['db_error'])
+        return
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(ADMIN_TEXTS['start_sending_notif']
+                                         .format(notif_text=notif.text))
+    try:
+        delivered_notif, reason = await broadcast_notif_to_active_users(
+            bot, notif)
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        if isinstance(callback.message, Message):
+            await callback.message.answer(ADMIN_TEXTS['db_error'])
+        return
+
+    if not delivered_notif:
+        if isinstance(callback.message, Message):
+            await callback.message.answer(reason)
+        return
+    if isinstance(callback.message, Message):
+        await callback.message.answer(ADMIN_TEXTS['success_broadcast']
+                                      .format(n=delivered_notif))
+
+
+@admin_router.callback_query(F.data == 'edit_notif',
+                             StateFilter(default_state))
+async def process_create_other_notification(callback: CallbackQuery,
+                                            state: FSMContext):
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(ADMIN_TEXTS['ask_text_for_notif'])
+    await state.set_state(FSMAdminPanel.waiting_for_text_of_notification)
+
+
+@admin_router.callback_query(F.data == 'cancel_notif',
+                             StateFilter(default_state))
+async def process_cancel_notif(callback: CallbackQuery):
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(ADMIN_TEXTS['notif_is_canceled'])
+
+
 # Служебная команда на время разработки
 @admin_router.message(Command(commands='pair'))
 async def process_create_pair(message: Message):
@@ -624,4 +729,14 @@ async def fallback_handler(message: Message):
     """
     logger.info('Админ отправил неизвестную команду.')
     await message.answer(ADMIN_TEXTS['admin_unknown_command'],
+                         reply_markup=buttons_kb_admin)
+
+
+@admin_router.message()
+async def other_type_handler(message: Message):
+    """
+    Хэндлер срабатывает, когда админ отправляет неизвестную команду или текст.
+    """
+    logger.info('Админ отправил что-то кроме текста.')
+    await message.answer(ADMIN_TEXTS['admin_unknown_type_data'],
                          reply_markup=buttons_kb_admin)

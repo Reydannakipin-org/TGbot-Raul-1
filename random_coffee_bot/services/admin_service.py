@@ -3,14 +3,17 @@ from datetime import date, datetime
 from typing import Optional, Sequence
 
 import asyncio
-from sqlalchemy import select
+from aiogram import Bot
+from aiogram.exceptions import TelegramForbiddenError
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 
-from database.models import Feedback, Pair, Setting, User
+from database.db import AsyncSessionLocal
+from database.models import Feedback, Notification, Pair, Setting, User
 from services.constants import DATE_FORMAT
-from services.user_service import get_user_by_telegram_id
+from services.user_service import set_user_active
 from texts import ADMIN_TEXTS, INTERVAL_TEXTS
 from utils.google_sheets import pairs_sheet, users_sheet
 
@@ -319,3 +322,95 @@ async def create_pair(session: AsyncSession,
         await session.rollback()
         logger.exception(f'Ошибка при создании пары для {user1_id} и {user2_id}')
         raise e
+
+
+async def create_notif(session: AsyncSession, received_text: str
+                       ) -> Notification:
+    """Создает объект расслыки в БД."""
+    notif = Notification(
+        text=received_text
+    )
+    session.add(notif)
+    try:
+        await session.commit()
+        return notif
+    except SQLAlchemyError as e:
+        await session.rollback()
+        raise e
+
+
+async def get_notif(notif_id: int) -> Notification | None:
+    """Возвращает экземпляр уведомления."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Notification)
+            .where(Notification.id == notif_id)
+        )
+        notif = result.scalar_one_or_none()
+        return notif
+
+
+async def mark_notif_as_sent(notif_id: int) -> None:
+    """Устанавливает дату и время, когда была отправлена рассылка."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(Notification)
+            .where(Notification.id == notif_id)
+            .values(sent_at=datetime.utcnow())
+        )
+        await session.commit()
+
+
+async def get_active_user_ids() -> Sequence[int]:
+    """Возвращает список telegram ID активных пользователей."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(User.telegram_id).where(User.is_active.is_(True))
+        )
+        user_telegram_ids = result.scalars().all()
+        return user_telegram_ids
+
+
+async def broadcast_notif_to_active_users(
+        bot: Bot, notif: Notification) -> tuple[int, Optional[str]]:
+    """
+    Отправляет рассылку активным пльзователям.
+    Вовзращает количество доставленных писем.
+    """
+    delivered_count = 0
+
+    try:
+        user_telegram_ids = await get_active_user_ids()
+    except SQLAlchemyError as e:
+        logger.error(f'Ошибка при получении ID активных юзеров из БД: {e}')
+        raise e
+    if not user_telegram_ids:
+        return 0, 'Нет активных пользователей для отправки уведомления.'
+
+    for telegram_id in user_telegram_ids:
+        try:
+            await bot.send_message(telegram_id, notif.text)
+            await asyncio.sleep(0.05)
+            delivered_count += 1
+        except TelegramForbiddenError:
+            logger.warning(f'Юзер {telegram_id} заблокировал бота.')
+            try:
+                async with AsyncSessionLocal() as session:
+                    await set_user_active(session, telegram_id, False)
+                    logger.info(f'Статус юзера {telegram_id} изменен '
+                                'на неактивный.')
+            except SQLAlchemyError as e:
+                logger.error('Не удалось изменить статус юзера '
+                             f'{telegram_id} на неактивный: {e}')
+        except Exception as e:
+            logger.warning(f'Не получилось отправить для {telegram_id}: {e}')
+    if delivered_count > 0:
+        try:
+            await mark_notif_as_sent(notif.id)
+        except SQLAlchemyError as e:
+            logger.error(f'Ошибка при работе с БД: {e}')
+        return delivered_count, None
+    return delivered_count, (f'Не удалось отправить уведомление ни одному '
+                             f'из {len(user_telegram_ids)} пользователей.\n'
+                             'Попробуйте снова немного позже. При '
+                             'повторной неудаче обратитесь к разработчикам.')

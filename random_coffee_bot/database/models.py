@@ -89,3 +89,11 @@ class Setting(CommonMixin, Base):
 
     key = Column(String, unique=True, nullable=False)
     value = Column(String, nullable=False)
+
+
+class Notification(CommonMixin, Base):
+    """Таблица для текстов рассылки от админа."""
+
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at = Column(DateTime, nullable=True)

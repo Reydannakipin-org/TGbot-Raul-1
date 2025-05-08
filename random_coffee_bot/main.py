@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher
 
 from config import Config, load_config
 from handlers.admin_handlers import admin_router
+from handlers.common_handler import common_router
 from handlers.users_handlers import user_router
 from middlewares import AccessMiddleware
 
@@ -37,11 +38,7 @@ async def main():
     dp.update.middleware(AccessMiddleware())
     dp.include_router(admin_router)
     dp.include_router(user_router)
-
-
-    # Так как БД сейчас настроена через Alembic, эта строчка не нужна.
-    # Но оставим, если понадобиться вручную дропнуть БД и создать новую.
-    # await create_database()
+    dp.include_router(common_router)
 
     await dp.start_polling(bot)
 
