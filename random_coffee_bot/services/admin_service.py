@@ -180,14 +180,20 @@ def get_next_pairing_date() -> Optional[date]:
     return None
 
 
-async def get_all_users(session: AsyncSession) -> Sequence[User]:
+async def get_all_users(session: AsyncSession,
+                        order_by: str = 'joined_at') -> Sequence[User]:
     """
     Извлекает из БД всех пользователей, сортирует по дате присоединения.
     """
     try:
-        result = await session.execute(
-            select(User).order_by(User.joined_at)
-        )
+        if order_by == 'last_name':
+            result = await session.execute(
+                select(User).order_by(User.last_name)
+            )
+        else:
+            result = await session.execute(
+                select(User).order_by(User.joined_at)
+            )
         users = result.scalars().all()
         return users
 
@@ -414,3 +420,14 @@ async def broadcast_notif_to_active_users(
                              f'из {len(user_telegram_ids)} пользователей.\n'
                              'Попробуйте снова немного позже. При '
                              'повторной неудаче обратитесь к разработчикам.')
+
+
+async def reset_user_pause_untill(session: AsyncSession, user: User) -> None:
+    from datetime import datetime
+    try:
+        if user.pause_until <= datetime.today().date():
+            user.pause_until = None
+            await session.commit()
+    except SQLAlchemyError as e:
+        logger.error(f'Ошибка при работе с БД: {e}')
+    return

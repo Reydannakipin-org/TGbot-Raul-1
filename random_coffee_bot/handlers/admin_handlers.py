@@ -22,7 +22,10 @@ from keyboards.admin_buttons import (buttons_kb_admin,
                                      generate_inline_confirm_permission_false,
                                      generate_inline_confirm_permission_true,
                                      generate_inline_interval_options,
-                                     generate_inline_notification_options)
+                                     generate_inline_notification_options,
+                                     generate_inline_user_list,
+                                     PageCallbackFactory,
+                                     UsersCallbackFactory)
 from services.admin_service import (broadcast_notif_to_active_users,
                                     create_notif,
                                     create_pair,
@@ -721,6 +724,58 @@ async def process_create_pair(message: Message):
         logger.exception('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
+
+@admin_router.message(Command(commands='list'), StateFilter(default_state))
+async def process_get_all_users_list(message: Message):
+    try:
+        kb_bilder = await generate_inline_user_list()
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+    await message.answer(
+        text="Выберите нужного пользователя из списка:",
+        reply_markup=kb_bilder.as_markup()
+    )
+
+
+@admin_router.callback_query(PageCallbackFactory.filter())
+async def paginate_users(callback: CallbackQuery, callback_data: PageCallbackFactory):
+    page = callback_data.page
+    try:
+        kb = await generate_inline_user_list(page=page)
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.message.answer(ADMIN_TEXTS['db_error'])
+    await callback.message.edit_text(
+        text="Выберите нужного пользователя из списка:",
+        reply_markup=kb.as_markup()
+    )
+    await callback.answer()
+
+@admin_router.callback_query(UsersCallbackFactory.filter())
+async def show_user_details(callback: CallbackQuery, callback_data: UsersCallbackFactory):
+    user_telegram_id = callback_data.telegram_id
+    logger.info(f'Админ выбрал юзера {user_telegram_id}')
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await callback.message.answer(ADMIN_TEXTS['db_error'])
+
+    if user is None:
+        logger.info('Пользователя с полученным ID нет в БД.')
+        await callback.message.answer(ADMIN_TEXTS['finding_user_fail'])
+        return
+    else:
+        logger.info(f'Пользователь {user_telegram_id} найден.')
+        data_text = format_text_about_user(
+            ADMIN_TEXTS['finding_user_success'], user)
+        ikb_participant_management = generate_inline_manage(
+            user_telegram_id, user.has_permission)
+        await callback.message.edit_text(data_text,
+                                         reply_markup=ikb_participant_management)
+    await callback.answer()
 
 @admin_router.message(F.text)
 async def fallback_handler(message: Message):

@@ -1,12 +1,21 @@
+import logging
+
+from aiogram.filters.callback_data import CallbackData
 from aiogram.types import (InlineKeyboardButton,
                            InlineKeyboardMarkup,
                            KeyboardButton)
-from aiogram.utils.keyboard import ReplyKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
+from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
-
+from database.db import AsyncSessionLocal
+from database.models import User
 from texts import (INLINE_BUTTON_TEXTS,
                    INTERVAL_TEXTS,
                    KEYBOARD_BUTTON_TEXTS)
+
+
+logger = logging.getLogger(__name__)
 
 
 button_list_participants = KeyboardButton(
@@ -157,3 +166,58 @@ def generate_inline_notification_options(notif_id):
             )
         ]
     ])
+
+
+class UsersCallbackFactory(CallbackData, prefix='get_user'):
+    telegram_id: int
+
+
+class PageCallbackFactory(CallbackData, prefix='page'):
+    page: int
+
+
+ITEMS_PER_PAGE = 2
+
+
+async def generate_inline_user_list(page: int = 1) -> InlineKeyboardBuilder:
+    try:
+        async with AsyncSessionLocal() as session:
+            total_res = await session.execute(
+                select(func.count()).select_from(User)
+            )
+            total = total_res.scalar_one()
+
+            stmt = (
+                select(User)
+                .order_by(User.last_name)
+                .offset((page - 1) * ITEMS_PER_PAGE)
+                .limit(ITEMS_PER_PAGE)
+            )
+            result = await session.execute(stmt)
+            users = result.scalars().all()
+    except SQLAlchemyError as e:
+        logger.exception('Не удалось получить список пользователей из БД.')
+        raise e
+
+    kb = InlineKeyboardBuilder()
+
+    for u in users:
+        text = f"{u.last_name or ''} {u.first_name or ''}".strip() or f"#{u.telegram_id}"
+        kb.button(
+            text=text,
+            callback_data=UsersCallbackFactory(telegram_id=u.telegram_id).pack()
+        )
+
+    if page > 1:
+        kb.button(
+            text="⬅️ Назад",
+            callback_data=PageCallbackFactory(page=page - 1).pack()
+        )
+    if page * ITEMS_PER_PAGE < total:
+        kb.button(
+            text="Вперёд ➡️",
+            callback_data=PageCallbackFactory(page=page + 1).pack()
+        )
+
+    kb.adjust(1)
+    return kb
