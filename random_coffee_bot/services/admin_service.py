@@ -44,7 +44,7 @@ async def set_user_permission(session: AsyncSession,
 
 async def set_user_pause_until(session: AsyncSession,
                                user: User,
-                               input_date: date
+                               input_date: Optional[date]
                                ) -> bool:
     """
     Изменяет значение флага has_permission.
@@ -163,7 +163,7 @@ async def set_new_global_interval(session: AsyncSession, new_value: int
             session.add(current_interval)
 
         await session.commit()
-        logger.info(f'Установленный интервал {current_interval}')
+        logger.info(f'Установленный интервал {current_interval.value}')
         return current_interval.value
     except SQLAlchemyError as e:
         await session.rollback()
@@ -180,38 +180,40 @@ def get_next_pairing_date() -> Optional[date]:
     return None
 
 
-async def get_all_users(session: AsyncSession,
-                        order_by: str = 'joined_at') -> Sequence[User]:
+async def fetch_all_users(session: AsyncSession) -> Sequence[User]:
     """
-    Извлекает из БД всех пользователей, сортирует по дате присоединения.
+    Извлекает из БД всех пользователей, предварительно удалив устаревшие
+    даты в pause_until, сортирует по дате присоединения.
     """
+    today = date.today()
     try:
-        if order_by == 'last_name':
-            result = await session.execute(
-                select(User).order_by(User.last_name)
+        async with session.begin():
+            await session.execute(
+                update(User)
+                .where(
+                    User.pause_until.is_not(None),
+                    User.pause_until <= today
+                )
+                .values(pause_until=None)
             )
-        else:
             result = await session.execute(
                 select(User).order_by(User.joined_at)
             )
-        users = result.scalars().all()
-        return users
+            users = result.scalars().all()
 
+        return users
     except SQLAlchemyError as e:
-        await session.rollback()
-        logger.exception('Ошибка при получении из БД всех пользователей.')
+        logger.exception(f'Не удалось получить юзеров из БД: {e}')
         raise e
 
 
 async def export_users_to_gsheet(
-    session: AsyncSession
-) -> int:
+    users: Sequence[User]
+) -> None:
     """
-    Берёт всех пользователей из БД и записывает их в Гугл Таблицу.
-    Возвращает число отправленных строк.
+    Записывает данные о пользователях в Гугл Таблицу.
     """
     logger.info('Начниаем экспорт юзеров.')
-    users = await get_all_users(session)
     worksheet = users_sheet
     loop = asyncio.get_running_loop()
 
@@ -240,12 +242,10 @@ async def export_users_to_gsheet(
     await loop.run_in_executor(None, worksheet.append_rows, rows)
     logger.info('Таблица юзеров экспортирована.')
 
-    return len(users)
 
-
-async def get_all_pairs(session: AsyncSession) -> Sequence[Pair]:
+async def fetch_all_pairs(session: AsyncSession) -> Sequence[Pair]:
     """
-    Извлекает из БД всех пользователей, сортирует по дате присоединения.
+    Извлекает из БД все пары, сортирует по дате их формирования.
     """
     try:
         result = await session.execute(
@@ -258,22 +258,18 @@ async def get_all_pairs(session: AsyncSession) -> Sequence[Pair]:
         )
         pairs = result.scalars().all()
         return pairs
-
     except SQLAlchemyError as e:
-        await session.rollback()
-        logger.exception('Ошибка при получении из БД всех пар.')
+        logger.exception(f'Не удалось получить пары из БД: {e}')
         raise e
 
 
 async def export_pairs_to_gsheet(
-    session: AsyncSession
-) -> int:
+    pairs: Sequence[Pair]
+) -> None:
     """
-    Берёт всех пользователей из БД и записывает их в Гугл Таблицу.
-    Возвращает число отправленных строк.
+    Записывает данные о парах в Гугл Таблицу.
     """
     logger.info('Начинаем экспорт пар и отзывов.')
-    pairs = await get_all_pairs(session)
     worksheet = pairs_sheet
     loop = asyncio.get_running_loop()
 
@@ -307,7 +303,6 @@ async def export_pairs_to_gsheet(
     await loop.run_in_executor(None, worksheet.clear)
     await loop.run_in_executor(None, worksheet.append_rows, rows)
     logger.info('Таблица пар с отзывами экспортирована.')
-    return len(pairs)
 
 
 # Служебная на время разработки
@@ -422,12 +417,14 @@ async def broadcast_notif_to_active_users(
                              'повторной неудаче обратитесь к разработчикам.')
 
 
-async def reset_user_pause_untill(session: AsyncSession, user: User) -> None:
-    from datetime import datetime
-    try:
-        if user.pause_until <= datetime.today().date():
-            user.pause_until = None
+async def reset_user_pause_until(session: AsyncSession, user: User) -> None:
+    """Если pause_until сегодня или раньше — обнуляем это поле."""
+    today = date.today()
+    if user.pause_until is not None and user.pause_until <= today:
+        user.pause_until = None
+        try:
             await session.commit()
-    except SQLAlchemyError as e:
-        logger.error(f'Ошибка при работе с БД: {e}')
-    return
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error('Ошибка при очистке pause_until '
+                         f'для user_id={user.id}: {e}')
