@@ -87,7 +87,7 @@ def format_text_about_user(template: str,   user: User,
 
 
 def create_text_with_interval(text: str,
-                              current_interval: Optional[str],
+                              current_interval: Optional[int],
                               next_pairing_date: Optional[date]) -> str:
     """
     Подставляет значения для переменных interval и next_pairing_date
@@ -96,7 +96,7 @@ def create_text_with_interval(text: str,
     if current_interval is None:
         interval_text = ADMIN_TEXTS['no_data']
     else:
-        interval_text = INTERVAL_TEXTS.get(current_interval,
+        interval_text = INTERVAL_TEXTS.get(str(current_interval),
                                            INTERVAL_TEXTS['default'])
 
     if next_pairing_date:
@@ -134,7 +134,7 @@ def parse_callback_data(data: str) -> tuple[str, str]:
         raise
 
 
-async def get_global_interval(session: AsyncSession) -> Optional[str]:
+async def get_global_interval(session: AsyncSession) -> Optional[int]:
     """
     Возвращает из базы данных значение глобального интервала.
     """
