@@ -31,8 +31,9 @@ class User(CommonMixin, Base):
     is_blocked = Column(Boolean, default=False, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
 
-    pairing_interval = Column(Integer, nullable=True)  # индивидуальный интервал (в днях)
+    pairing_interval = Column(Integer, nullable=True)
     last_paired_at = Column(Date, nullable=True)
+    future_meeting = Column(Integer, default=1)
     pause_until = Column(Date, nullable=True)
     joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -46,6 +47,11 @@ class User(CommonMixin, Base):
         foreign_keys="Pair.user2_id",
         back_populates="user2"
     )
+    pairs_as_user3 = relationship(
+        "Pair",
+        foreign_keys="Pair.user3_id",
+        back_populates="user3"
+    )
 
     feedbacks = relationship("Feedback", back_populates="user")
 
@@ -55,19 +61,24 @@ class Pair(CommonMixin, Base):
 
     user1_id = Column(Integer, ForeignKey('user.id'), nullable=False)
     user2_id = Column(Integer, ForeignKey('user.id'), nullable=False)
+    user3_id = Column(Integer, ForeignKey('user.id'), nullable=True)
 
+    feedback_sent = Column(Boolean, default=False)
     paired_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user1 = relationship(
         "User", foreign_keys=[user1_id], back_populates="pairs_as_user1"
-        )
+    )
     user2 = relationship(
         "User", foreign_keys=[user2_id], back_populates="pairs_as_user2"
-        )
+    )
+    user3 = relationship(
+        "User", foreign_keys=[user3_id], back_populates="pairs_as_user3"
+    )
 
     feedbacks = relationship(
         "Feedback", back_populates="pair", cascade="all, delete"
-        )
+    )
 
 
 class Feedback(CommonMixin, Base):
@@ -84,11 +95,14 @@ class Feedback(CommonMixin, Base):
     user = relationship("User", back_populates="feedbacks")
 
 
-class Setting(CommonMixin, Base):
+class Setting(Base):
     """Таблица для изменяемых настроек работы бота."""
+    __tablename__ = 'settings'
 
-    key = Column(String, unique=True, nullable=False)
-    value = Column(String, nullable=False)
+    id = Column(Integer, primary_key=True)
+    key = Column(String, unique=True, nullable=False, default="global_interval")
+    value = Column(Integer, nullable=False, default=2)
+    first_matching_date = Column(DateTime, default=datetime(2025, 5, 15, 10, 0))
 
 
 class Notification(CommonMixin, Base):

@@ -581,7 +581,12 @@ async def process_set_new_interval(callback: CallbackQuery):
     вариантов интервала. Устанавливает выбранный вариант как новый
     глобальный интервал в базе данных.
     """
-    _, new_interval = adm.parse_callback_data(callback.data)
+    _, new_interval_str = adm.parse_callback_data(callback.data)
+    try:
+        new_interval = int(new_interval_str.strip())
+    except ValueError:
+        logger.error('Невозможно привести интервал из коллюэка к int.')
+        return
     try:
         async with AsyncSessionLocal() as session:
             current_interval = await adm.set_new_global_interval(
