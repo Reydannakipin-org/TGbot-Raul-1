@@ -82,7 +82,9 @@ async def process_start_command(message: Message, state: FSMContext):
                 if not user.is_active:
                     await set_user_active(session, user_telegram_id, True)
                     logger.info('Статус пользователя изменен на Активный.')
-                await message.answer(TEXTS['re_start'])
+                await message.answer(
+                    TEXTS['re_start'],
+                    reply_markup=create_active_user_keyboard())
     except SQLAlchemyError as e:
         logger.exception('Ошибка при работе с базой данных: %s', str(e))
         await message.answer(TEXTS['db_error'])
@@ -310,7 +312,8 @@ async def pause_participation(message: Message, state: FSMContext):
             reply_markup=create_deactivate_keyboard()
         )
     else:
-        await message.answer("Вы уже неактивны.")
+        await message.answer("Вы уже неактивны.",
+                             reply_markup=create_inactive_user_keyboard())
 
 
 @user_router.message(F.text == KEYBOARD_BUTTON_TEXTS[
@@ -333,7 +336,8 @@ async def resume_participation(message: Message, state: FSMContext):
             reply_markup=create_activate_keyboard()
         )
     else:
-        await message.answer("Вы уже активны.")
+        await message.answer("Вы уже активны.",
+                             reply_markup=create_active_user_keyboard())
 
 
 @user_router.callback_query(lambda c: c.data.startswith("confirm_deactivate_"),
@@ -685,5 +689,6 @@ async def fallback_handler(message: Message):
     так как он улавливает любую команду которую не смогли уловить
     другие хэндлеры.
     '''
-    await message.answer('Я не знаю такой командыrandom_coffee_bot. '
-                         'Пожалуйста, используй клавиатуру.')
+    await message.answer('Я не знаю такой команды. '
+                         'Пожалуйста, используй клавиатуру. Если клавиатура '
+                         'недоступна, отправь команду /start.')

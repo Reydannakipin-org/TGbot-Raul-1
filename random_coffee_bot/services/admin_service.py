@@ -3,14 +3,17 @@ from datetime import date, datetime
 from typing import Optional, Sequence
 
 import asyncio
-from sqlalchemy import select
+from aiogram import Bot
+from aiogram.exceptions import TelegramForbiddenError
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 
-from database.models import Feedback, Pair, Setting, User
+from database.db import AsyncSessionLocal
+from database.models import Feedback, Notification, Pair, Setting, User
 from services.constants import DATE_FORMAT
-from services.user_service import get_user_by_telegram_id
+from services.user_service import set_user_active
 from texts import ADMIN_TEXTS, INTERVAL_TEXTS
 from utils.google_sheets import pairs_sheet, users_sheet
 
@@ -41,7 +44,7 @@ async def set_user_permission(session: AsyncSession,
 
 async def set_user_pause_until(session: AsyncSession,
                                user: User,
-                               input_date: date
+                               input_date: Optional[date]
                                ) -> bool:
     """
     Изменяет значение флага has_permission.
@@ -160,7 +163,7 @@ async def set_new_global_interval(session: AsyncSession, new_value: int
             session.add(current_interval)
 
         await session.commit()
-        logger.info(f'Установленный интервал {current_interval}')
+        logger.info(f'Установленный интервал {current_interval.value}')
         return current_interval.value
     except SQLAlchemyError as e:
         await session.rollback()
@@ -177,32 +180,40 @@ def get_next_pairing_date() -> Optional[date]:
     return None
 
 
-async def get_all_users(session: AsyncSession) -> Sequence[User]:
+async def fetch_all_users(session: AsyncSession) -> Sequence[User]:
     """
-    Извлекает из БД всех пользователей, сортирует по дате присоединения.
+    Извлекает из БД всех пользователей, предварительно удалив устаревшие
+    даты в pause_until, сортирует по дате присоединения.
     """
+    today = date.today()
     try:
-        result = await session.execute(
-            select(User).order_by(User.joined_at)
-        )
-        users = result.scalars().all()
-        return users
+        async with session.begin():
+            await session.execute(
+                update(User)
+                .where(
+                    User.pause_until.is_not(None),
+                    User.pause_until <= today
+                )
+                .values(pause_until=None)
+            )
+            result = await session.execute(
+                select(User).order_by(User.joined_at)
+            )
+            users = result.scalars().all()
 
+        return users
     except SQLAlchemyError as e:
-        await session.rollback()
-        logger.exception('Ошибка при получении из БД всех пользователей.')
+        logger.exception(f'Не удалось получить юзеров из БД: {e}')
         raise e
 
 
 async def export_users_to_gsheet(
-    session: AsyncSession
-) -> int:
+    users: Sequence[User]
+) -> None:
     """
-    Берёт всех пользователей из БД и записывает их в Гугл Таблицу.
-    Возвращает число отправленных строк.
+    Записывает данные о пользователях в Гугл Таблицу.
     """
     logger.info('Начниаем экспорт юзеров.')
-    users = await get_all_users(session)
     worksheet = users_sheet
     loop = asyncio.get_running_loop()
 
@@ -231,12 +242,10 @@ async def export_users_to_gsheet(
     await loop.run_in_executor(None, worksheet.append_rows, rows)
     logger.info('Таблица юзеров экспортирована.')
 
-    return len(users)
 
-
-async def get_all_pairs(session: AsyncSession) -> Sequence[Pair]:
+async def fetch_all_pairs(session: AsyncSession) -> Sequence[Pair]:
     """
-    Извлекает из БД всех пользователей, сортирует по дате присоединения.
+    Извлекает из БД все пары, сортирует по дате их формирования.
     """
     try:
         result = await session.execute(
@@ -249,22 +258,18 @@ async def get_all_pairs(session: AsyncSession) -> Sequence[Pair]:
         )
         pairs = result.scalars().all()
         return pairs
-
     except SQLAlchemyError as e:
-        await session.rollback()
-        logger.exception('Ошибка при получении из БД всех пар.')
+        logger.exception(f'Не удалось получить пары из БД: {e}')
         raise e
 
 
 async def export_pairs_to_gsheet(
-    session: AsyncSession
-) -> int:
+    pairs: Sequence[Pair]
+) -> None:
     """
-    Берёт всех пользователей из БД и записывает их в Гугл Таблицу.
-    Возвращает число отправленных строк.
+    Записывает данные о парах в Гугл Таблицу.
     """
     logger.info('Начинаем экспорт пар и отзывов.')
-    pairs = await get_all_pairs(session)
     worksheet = pairs_sheet
     loop = asyncio.get_running_loop()
 
@@ -298,7 +303,6 @@ async def export_pairs_to_gsheet(
     await loop.run_in_executor(None, worksheet.clear)
     await loop.run_in_executor(None, worksheet.append_rows, rows)
     logger.info('Таблица пар с отзывами экспортирована.')
-    return len(pairs)
 
 
 # Служебная на время разработки
@@ -319,3 +323,108 @@ async def create_pair(session: AsyncSession,
         await session.rollback()
         logger.exception(f'Ошибка при создании пары для {user1_id} и {user2_id}')
         raise e
+
+
+async def create_notif(session: AsyncSession, received_text: str
+                       ) -> Notification:
+    """Создает объект расслыки в БД."""
+    notif = Notification(
+        text=received_text
+    )
+    session.add(notif)
+    try:
+        await session.commit()
+        return notif
+    except SQLAlchemyError as e:
+        await session.rollback()
+        raise e
+
+
+async def get_notif(notif_id: int) -> Notification | None:
+    """Возвращает экземпляр уведомления."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Notification)
+            .where(Notification.id == notif_id)
+        )
+        notif = result.scalar_one_or_none()
+        return notif
+
+
+async def mark_notif_as_sent(notif_id: int) -> None:
+    """Устанавливает дату и время, когда была отправлена рассылка."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(Notification)
+            .where(Notification.id == notif_id)
+            .values(sent_at=datetime.utcnow())
+        )
+        await session.commit()
+
+
+async def get_active_user_ids() -> Sequence[int]:
+    """Возвращает список telegram ID активных пользователей."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(User.telegram_id).where(User.is_active.is_(True))
+        )
+        user_telegram_ids = result.scalars().all()
+        return user_telegram_ids
+
+
+async def broadcast_notif_to_active_users(
+        bot: Bot, notif: Notification) -> tuple[int, Optional[str]]:
+    """
+    Отправляет рассылку активным пльзователям.
+    Вовзращает количество доставленных писем.
+    """
+    delivered_count = 0
+
+    try:
+        user_telegram_ids = await get_active_user_ids()
+    except SQLAlchemyError as e:
+        logger.error(f'Ошибка при получении ID активных юзеров из БД: {e}')
+        raise e
+    if not user_telegram_ids:
+        return 0, 'Нет активных пользователей для отправки уведомления.'
+
+    for telegram_id in user_telegram_ids:
+        try:
+            await bot.send_message(telegram_id, notif.text)
+            await asyncio.sleep(0.05)
+            delivered_count += 1
+        except TelegramForbiddenError:
+            logger.warning(f'Юзер {telegram_id} заблокировал бота.')
+            try:
+                async with AsyncSessionLocal() as session:
+                    await set_user_active(session, telegram_id, False)
+                    logger.info(f'Статус юзера {telegram_id} изменен '
+                                'на неактивный.')
+            except SQLAlchemyError as e:
+                logger.error('Не удалось изменить статус юзера '
+                             f'{telegram_id} на неактивный: {e}')
+        except Exception as e:
+            logger.warning(f'Не получилось отправить для {telegram_id}: {e}')
+    if delivered_count > 0:
+        try:
+            await mark_notif_as_sent(notif.id)
+        except SQLAlchemyError as e:
+            logger.error(f'Ошибка при работе с БД: {e}')
+        return delivered_count, None
+    return delivered_count, (f'Не удалось отправить уведомление ни одному '
+                             f'из {len(user_telegram_ids)} пользователей.\n'
+                             'Попробуйте снова немного позже. При '
+                             'повторной неудаче обратитесь к разработчикам.')
+
+
+async def reset_user_pause_until(session: AsyncSession, user: User) -> None:
+    """Если pause_until сегодня или раньше — обнуляем это поле."""
+    today = date.today()
+    if user.pause_until is not None and user.pause_until <= today:
+        user.pause_until = None
+        try:
+            await session.commit()
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error('Ошибка при очистке pause_until '
+                         f'для user_id={user.id}: {e}')
