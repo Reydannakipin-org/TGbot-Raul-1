@@ -1,7 +1,7 @@
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED
-from apscheduler.jobstores.base import JobLookupError
 from datetime import datetime, timedelta
 from random import shuffle
 import asyncio
@@ -18,10 +18,13 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.models import User, Pair, Setting, Feedback
 
+
+# пусть пока тут будет когда будет постгрес тогда будет видно где лучше быть
 scheduler = AsyncIOScheduler(
         jobstores={'default': SQLAlchemyJobStore(url='sqlite:///jobs.sqlite')},
         timezone='Europe/Moscow'
     )
+current_interval = None
 
 class FeedbackStates(StatesGroup):
     writing_comment = State()
@@ -45,6 +48,9 @@ async def auto_pairing_wrapper():
     bot, dispatcher, session_maker = job_context.get_context()
     await auto_pairing(session_maker, bot)
 
+async def reload_scheduled_wrapper():
+    _, _, session_maker = job_context.get_context()
+    await reload_scheduled_jobs(session_maker)
 
 # ласт пара
 async def get_latest_pair_id_for_user(session: AsyncSession, user_id: int) -> int | None:
@@ -284,7 +290,7 @@ async def save_comment(
 
 
 
-# отображение когда сформируются пары и опрос как прошла встреча
+# отображение для консоли его в проде не будет
 def show_next_runs(scheduler: AsyncIOScheduler):
     print("🔔 Расписание ближайших запусков задач:")
 
@@ -292,7 +298,7 @@ def show_next_runs(scheduler: AsyncIOScheduler):
         next_run = job.next_run_time
         print(f"🛠 Задача '{job.id}' запустится в: {next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else 'нет запланированного запуска'}")
 
-# сам запуск
+# отображение для консоли его в проде не будет
 def job_listener(event):
     show_next_runs(scheduler)
 
@@ -340,6 +346,8 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
 
 
 async def schedule_feedback_jobs(session_maker):
+    global current_interval  # Убедимся, что мы используем глобальную переменную
+
     async with session_maker() as session:
         result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
         setting = result.scalar_one_or_none()
@@ -348,46 +356,67 @@ async def schedule_feedback_jobs(session_maker):
         start_date = setting.first_matching_date if setting and setting.first_matching_date else datetime.utcnow()
 
         feedback_minutes = interval_minutes
-        pairing_minutes = interval_minutes +1
+        pairing_minutes = interval_minutes
+        reload_job_minutes = interval_minutes -1
+        # reload_job_day = interval_minutes * 7 -1
         # feedback_day = interval_minutes * 7 -3
         # pairing_day = interval_minutes * 7
     if not scheduler.running:
+        # отображение для консоли его в проде не будет
         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
         scheduler.start()
 
-    def schedule_or_reschedule(job_id, func, interval_minutes):
+    # Если интервал изменился, обновляем текущий интервал
+    if current_interval != interval_minutes:
+        print(f"🔁 Интервал изменился: {current_interval} ➡️ {interval_minutes}")
+        current_interval = interval_minutes  # Обновляем глобальный интервал
+
+    def schedule_or_reschedule(job_id, func, interval_minutes, start_date=None):
         job = scheduler.get_job(job_id)
 
         if job:
-            current_interval = job.trigger.interval.total_seconds() / 60
-            if int(current_interval) == interval_minutes:
+            current_interval_from_job = job.trigger.interval.total_seconds() / 60
+            if int(current_interval_from_job) == interval_minutes:
                 print(f"✅ '{job_id}' уже запланирована с тем же интервалом.")
                 return
-
-            print(f"♻️ Интервал '{job_id}' изменился. Перезапускаем...")
-
-            next_time = job.next_run_time or datetime.utcnow()
-            scheduler.remove_job(job_id)
-
-            scheduler.add_job(
-                func,
-                trigger=IntervalTrigger(minutes=interval_minutes, start_date=next_time),
-                id=job_id,
-                replace_existing=True,
-            )
-            print(f"🆕 '{job_id}' пересоздана. Старт: {next_time}")
+            else:
+                print(f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_minutes}. Перезапускаем...")
+                next_time = job.next_run_time or datetime.utcnow()
+                scheduler.remove_job(job_id)
         else:
             print(f"➕ '{job_id}' не существует. Создаём заново.")
-            scheduler.add_job(
-                func,
-                trigger=IntervalTrigger(minutes=interval_minutes, start_date=start_date),
-                id=job_id,
-                replace_existing=False,
-            )
+            next_time = start_date or datetime.utcnow()
 
-    # Запуск задач — только после старта планировщика! редактор интервала
-    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, feedback_minutes)
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_minutes)
+        scheduler.add_job(
+            func,
+            trigger=IntervalTrigger(minutes=interval_minutes, start_date=next_time),
+            id=job_id,
+            replace_existing=True,
+        )
+        print(f"🆕 '{job_id}' пересоздана. Старт: {next_time}")
 
+    # в конце start_date=start_date
+    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, reload_job_minutes, start_date=start_date)
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, feedback_minutes, start_date=start_date)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_minutes, start_date=start_date)
+
+    # просто вывод в консоль его в проде не будет
     show_next_runs(scheduler)
 
+
+async def reload_scheduled_jobs(session_maker):
+    async with session_maker() as session:
+        result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
+        setting = result.scalar_one_or_none()
+        new_interval_minutes = int(setting.value) if setting and setting.value else 2
+
+    global current_interval
+    # Если интервал изменился, обновляем задачи
+    if current_interval != new_interval_minutes:
+        print(f"🔁 Интервал изменился: {current_interval} ➡️ {new_interval_minutes}")
+        current_interval = new_interval_minutes
+
+        # Перезапускаем задачи с новым интервалом
+        await schedule_feedback_jobs(session_maker)
+    else:
+        print("✅ Интервал не изменился. Задачи остаются с прежним интервалом.")

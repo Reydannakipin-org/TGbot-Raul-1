@@ -465,6 +465,7 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
     action, pair_id = data.split(":")
 
     if action == "no_comment":
+        await state.clear()
         await callback.message.answer("Спасибо! Отзыв учтён ✅")
     else:
         await state.set_state(CommentStates.waiting_for_comment)
@@ -524,7 +525,8 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
                     '🗓️ Изменить частоту встреч',
                     '⏸️ Приостановить участие',
                     '❓ Как работает Random Coffee?',
-                    '▶️ Возобновить участие', ] # как раньше
+                    '▶️ Возобновить участие',
+                    ]
 
     if comment_text in button_texts:
         await message.answer("Пожалуйста, введите комментарий вручную, а не выбирайте кнопку.")
