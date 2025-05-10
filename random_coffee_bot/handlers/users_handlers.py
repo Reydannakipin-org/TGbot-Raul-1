@@ -444,33 +444,92 @@ async def process_clean_keyboards(message: Message, state: FSMContext):
 
 # --- Ответ: Да/Нет встреча ---
 @user_router.callback_query(F.data.startswith("meeting_yes") | F.data.startswith("meeting_no"))
-async def process_meeting_feedback(callback: types.CallbackQuery, state: FSMContext):
+async def process_meeting_feedback(callback: types.CallbackQuery, session_maker):
     await callback.answer()
     data = callback.data
     pair_id = data.split(":")[1] if ":" in data else None
 
-    if data.startswith("meeting_no"):
-        await callback.message.answer("Спасибо за информацию!")
-    else:
-        await callback.message.answer(
-            "Хотите оставить комментарий?",
-            reply_markup=comment_question_kb(pair_id)
+    telegram_user_id = callback.from_user.id
+
+    async with session_maker() as session:
+        user = await session.execute(select(User).filter_by(telegram_id=telegram_user_id))
+        user = user.scalar_one_or_none()
+
+        if user is None:
+            await callback.message.answer("Пользователь не найден.")
+            return
+
+        user_id = user.id
+
+        existing_feedback = await session.execute(
+            select(Feedback).filter_by(pair_id=pair_id, user_id=user_id, did_meet=False)
         )
+        existing_feedback = existing_feedback.scalar_one_or_none()
+
+        if data.startswith("meeting_no"):
+            if existing_feedback:
+                await callback.message.answer("Вы уже оставили отзыв с ответом 'нет' для этой встречи.")
+                return
+
+            feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=False)
+            session.add(feedback)
+            await session.commit()
+
+            await callback.message.answer("Спасибо за информацию!")
+
+        elif data.startswith("meeting_yes"):
+            if existing_feedback:
+                await callback.message.answer(
+                    "Вы оставили отзыв с 'нет'. Хотите оставить комментарий?",
+                    reply_markup=comment_question_kb(pair_id)
+                )
+            else:
+                await callback.message.answer(
+                    "Хотите оставить комментарий?",
+                    reply_markup=comment_question_kb(pair_id)
+                )
 
 # --- Ответ: Комментарий или нет ---
 @user_router.callback_query(F.data.startswith("leave_comment") | F.data.startswith("no_comment"))
-async def process_comment_choice(callback: types.CallbackQuery, state: FSMContext):
+async def process_comment_choice(callback: types.CallbackQuery, state: FSMContext, session_maker):
     await callback.answer()
     data = callback.data
     action, pair_id = data.split(":")
 
-    if action == "no_comment":
-        await state.clear()
-        await callback.message.answer("Спасибо! Отзыв учтён ✅")
-    else:
-        await state.set_state(CommentStates.waiting_for_comment)
-        await state.update_data(pair_id=int(pair_id))
-        await callback.message.answer("Введите комментарий (или отправьте /cancel для отмены):")
+    telegram_user_id = callback.from_user.id
+
+    async with session_maker() as session:
+        user = await session.execute(select(User).filter_by(telegram_id=telegram_user_id))
+        user = user.scalar_one_or_none()
+
+        if user is None:
+            await callback.message.answer("Пользователь не найден.")
+            return
+
+        user_id = user.id
+        pair_id = int(pair_id)
+
+        existing_feedback = await session.execute(
+            select(Feedback).filter_by(pair_id=pair_id, user_id=user_id, comment="")
+        )
+        existing_feedback = existing_feedback.scalar_one_or_none()
+
+        if action == "no_comment":
+            if existing_feedback:
+                await callback.message.answer("Вы уже оставили отзыв без комментария.")
+                return
+
+            feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=True, comment="")
+            session.add(feedback)
+            await session.commit()
+
+            await state.clear()
+            await callback.message.answer("Спасибо! Отзыв учтён ✅")
+
+        else:
+            await state.set_state(CommentStates.waiting_for_comment)
+            await state.update_data(pair_id=pair_id)
+            await callback.message.answer("Введите комментарий (или отправьте /cancel для отмены):")
 #11111
 @user_router.callback_query(F.data.startswith("confirm_edit") | F.data.startswith("cancel_edit"))
 async def handle_edit_decision(callback: types.CallbackQuery, state: FSMContext, **kwargs):

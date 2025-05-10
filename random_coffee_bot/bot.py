@@ -351,16 +351,21 @@ async def schedule_feedback_jobs(session_maker):
     async with session_maker() as session:
         result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
         setting = result.scalar_one_or_none()
+        # result = await session.execute(
+        #     select(Pair.paired_at).order_by(Pair.paired_at.desc()).limit(1)
+        # )
+        # last_paired_at = result.scalar_one_or_none()
 
+        # three_days_before = (last_paired_at or datetime.utcnow()) - timedelta(days=3)
         interval_minutes = int(setting.value) if setting and setting.value else 2
         start_date = setting.first_matching_date if setting and setting.first_matching_date else datetime.utcnow()
 
-        feedback_minutes = interval_minutes
-        pairing_minutes = interval_minutes
-        reload_job_minutes = interval_minutes -1
-        # reload_job_day = interval_minutes * 7 -1
-        # feedback_day = interval_minutes * 7 -3
-        # pairing_day = interval_minutes * 7
+        # feedback_minutes = interval_minutes
+        # pairing_minutes = interval_minutes
+        # reload_job_minutes = interval_minutes -1
+        pairing_day = interval_minutes * 7
+        feedback_day = pairing_day - 3
+        reload_job_day = pairing_day - 1
     if not scheduler.running:
         # отображение для консоли его в проде не будет
         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
@@ -396,9 +401,9 @@ async def schedule_feedback_jobs(session_maker):
         print(f"🆕 '{job_id}' пересоздана. Старт: {next_time}")
 
     # в конце start_date=start_date
-    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, reload_job_minutes, start_date=start_date)
-    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, feedback_minutes, start_date=start_date)
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_minutes, start_date=start_date)
+    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, interval_minutes, start_date=start_date)
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, interval_minutes, start_date=start_date)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, interval_minutes, start_date=start_date)
 
     # просто вывод в консоль его в проде не будет
     show_next_runs(scheduler)
