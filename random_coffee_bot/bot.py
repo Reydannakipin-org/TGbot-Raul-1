@@ -352,12 +352,11 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
         await session.commit()
 
 async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing):
-    # Вычитаем 3 дня из времени старта задачи auto_pairing_wrapper
     start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)
     return start_date_for_feedback_dispatcher
 
 async def schedule_feedback_jobs(session_maker):
-    global current_interval  # Убедимся, что мы используем глобальную переменную
+    global current_interval
 
     async with session_maker() as session:
         result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
@@ -366,8 +365,6 @@ async def schedule_feedback_jobs(session_maker):
         interval_minutes = int(setting.value) if setting and setting.value else 2
         start_date = setting.first_matching_date if setting and setting.first_matching_date else datetime.utcnow()
 
-        feedback_minutes = interval_minutes
-        pairing_minutes = interval_minutes
         pairing_day = interval_minutes * 7
 
 
@@ -375,21 +372,21 @@ async def schedule_feedback_jobs(session_maker):
         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
         scheduler.start()
 
-    # Если интервал изменился, обновляем текущий интервал
     if current_interval != interval_minutes:
         print(f"🔁 Интервал изменился: {current_interval} ➡️ {interval_minutes}")
-        current_interval = interval_minutes  # Обновляем глобальный интервал
+        current_interval = interval_minutes
 
-    def schedule_or_reschedule(job_id, func, interval_minutes, start_date=None):
+    def schedule_or_reschedule(job_id, func, interval_days, start_date=None):
         job = scheduler.get_job(job_id)
 
         if job:
-            current_interval_from_job = job.trigger.interval.total_seconds() / 60
-            if int(current_interval_from_job) == interval_minutes:
+            current_interval_from_job = job.trigger.interval.days
+            if int(current_interval_from_job) == interval_days:
                 print(f"✅ '{job_id}' уже запланирована с тем же интервалом.")
                 return
             else:
-                print(f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_minutes}. Перезапускаем...")
+                print(
+                    f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_days}. Перезапускаем...")
                 next_time = job.next_run_time or datetime.utcnow()
                 scheduler.remove_job(job_id)
         else:
@@ -398,7 +395,7 @@ async def schedule_feedback_jobs(session_maker):
 
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(days=interval_minutes, start_date=next_time),
+            trigger=IntervalTrigger(days=interval_days, start_date=next_time),
             id=job_id,
             replace_existing=True,
         )
@@ -406,12 +403,12 @@ async def schedule_feedback_jobs(session_maker):
 
     # Запускаем задачу auto_pairing_weekly
     start_date_for_auto_pairing = start_date  # Можно изменить, если требуется логика
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, start_date=start_date_for_auto_pairing)
 
     start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing)
     schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, start_date=start_date_for_feedback_dispatcher)
 
-    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1)
+    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, start_date=start_date_for_auto_pairing)
 
     show_next_runs(scheduler)
 
