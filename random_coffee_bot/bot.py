@@ -351,7 +351,10 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
 
         await session.commit()
 
-
+async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing):
+    # Вычитаем 3 дня из времени старта задачи auto_pairing_wrapper
+    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)
+    return start_date_for_feedback_dispatcher
 
 async def schedule_feedback_jobs(session_maker):
     global current_interval  # Убедимся, что мы используем глобальную переменную
@@ -359,23 +362,16 @@ async def schedule_feedback_jobs(session_maker):
     async with session_maker() as session:
         result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
         setting = result.scalar_one_or_none()
-        # result = await session.execute(
-        #     select(Pair.paired_at).order_by(Pair.paired_at.desc()).limit(1)
-        # )
-        # last_paired_at = result.scalar_one_or_none()
 
-        # three_days_before = (last_paired_at or datetime.utcnow()) - timedelta(days=3)
         interval_minutes = int(setting.value) if setting and setting.value else 2
         start_date = setting.first_matching_date if setting and setting.first_matching_date else datetime.utcnow()
 
         feedback_minutes = interval_minutes
         pairing_minutes = interval_minutes
-        # reload_job_minutes = interval_minutes -1
         pairing_day = interval_minutes * 7
-        feedback_day = pairing_day - 3
-        reload_job_day = pairing_day - 1
+
+
     if not scheduler.running:
-        # отображение для консоли его в проде не будет
         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
         scheduler.start()
 
@@ -402,18 +398,21 @@ async def schedule_feedback_jobs(session_maker):
 
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(minutes=interval_minutes, start_date=next_time),
+            trigger=IntervalTrigger(days=interval_minutes, start_date=next_time),
             id=job_id,
             replace_existing=True,
         )
         print(f"🆕 '{job_id}' пересоздана. Старт: {next_time}")
 
-    # в конце start_date=start_date
-    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, start_date=start_date)
-    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, feedback_minutes, start_date=start_date)
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_minutes, start_date=start_date)
+    # Запускаем задачу auto_pairing_weekly
+    start_date_for_auto_pairing = start_date  # Можно изменить, если требуется логика
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day)
 
-    # просто вывод в консоль его в проде не будет
+    start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing)
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, start_date=start_date_for_feedback_dispatcher)
+
+    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1)
+
     show_next_runs(scheduler)
 
 
