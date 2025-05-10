@@ -338,17 +338,6 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
             await callback_query.answer(
                 "Пользователь не найден.", show_alert=True
             )
-
-            session.add(user)
-            await session.commit()
-            logger.info('Пользователь добавлен в БД.')
-            await message.answer(TEXTS['start'])
-        else:
-            if not user.is_active:
-                user.is_active = True
-                await session.commit()
-                logger.info('Статус пользователя изменен на Активный.')
-            await message.answer(TEXTS['re_start'])
             return
 
         try:
@@ -381,6 +370,7 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
                 "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
                 show_alert=True
             )
+
 
 
 @user_router.callback_query(lambda c: c.data.startswith("confirm_activate_"),
@@ -461,33 +451,56 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
 
         user_id = user.id
 
+        # Проверяем, существует ли уже отзыв для этой пары и пользователя
         existing_feedback = await session.execute(
-            select(Feedback).filter_by(pair_id=pair_id, user_id=user_id, did_meet=False)
+            select(Feedback).filter_by(pair_id=pair_id, user_id=user_id)
         )
         existing_feedback = existing_feedback.scalar_one_or_none()
 
         if data.startswith("meeting_no"):
             if existing_feedback:
-                await callback.message.answer("Вы уже оставили отзыв с ответом 'нет' для этой встречи.")
-                return
+                # Если отзыв с ответом "нет" уже существует, уведомляем пользователя
+                if existing_feedback.did_meet is False:
+                    await callback.message.answer("Вы уже оставили отзыв с ответом 'нет' для этой встречи.")
+                    return
+                if existing_feedback.did_meet is True:
+                    await callback.message.answer("Вы уже оставили отзыв с ответом 'да' для этой встречи и не можете поменять на 'нет'.")
+                    return
+                else:
+                    # Если отзыв с ответом "да" существует, обновляем его
+                    existing_feedback.did_meet = False
+                    existing_feedback.comment = None  # Очищаем комментарий, если был
+                    await session.commit()
 
-            feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=False)
-            session.add(feedback)
-            await session.commit()
+            else:
+                # Если отзыва нет, создаём новый
+                feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=False)
+                session.add(feedback)
+                await session.commit()
 
             await callback.message.answer("Спасибо за информацию!")
 
         elif data.startswith("meeting_yes"):
             if existing_feedback:
-                await callback.message.answer(
-                    "Вы оставили отзыв с 'нет'. Хотите оставить комментарий?",
-                    reply_markup=comment_question_kb(pair_id)
-                )
+                # Если уже был отзыв с "нет", предложим оставить комментарий
+                if existing_feedback.did_meet is False:
+                    await callback.message.answer(
+                        "Вы оставили отзыв с 'нет'. Хотите оставить комментарий?",
+                        reply_markup=comment_question_kb(pair_id)
+                    )
+                else:
+                    # Если отзыв с "да" уже существует, просто просим оставить комментарий
+                    await callback.message.answer(
+                        "Хотите оставить комментарий?",
+                        reply_markup=comment_question_kb(pair_id)
+                    )
             else:
+                # Если отзыва нет, создаём новый
                 await callback.message.answer(
                     "Хотите оставить комментарий?",
                     reply_markup=comment_question_kb(pair_id)
                 )
+
 
 # --- Ответ: Комментарий или нет ---
 @user_router.callback_query(F.data.startswith("leave_comment") | F.data.startswith("no_comment"))
@@ -509,17 +522,19 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
         user_id = user.id
         pair_id = int(pair_id)
 
+        # Проверяем, существует ли уже отзыв без комментария
         existing_feedback = await session.execute(
-            select(Feedback).filter_by(pair_id=pair_id, user_id=user_id, comment="")
+            select(Feedback).filter_by(pair_id=pair_id, user_id=user_id)
         )
         existing_feedback = existing_feedback.scalar_one_or_none()
 
         if action == "no_comment":
             if existing_feedback:
+                # Если отзыв без комментария уже существует
                 await callback.message.answer("Вы уже оставили отзыв без комментария.")
                 return
 
-            feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=True, comment="")
+            feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=True, comment=None)
             session.add(feedback)
             await session.commit()
 
@@ -527,6 +542,7 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
             await callback.message.answer("Спасибо! Отзыв учтён ✅")
 
         else:
+            # Если выбран вариант с комментарием, запускаем ожидание ввода
             await state.set_state(CommentStates.waiting_for_comment)
             await state.update_data(pair_id=pair_id)
             await callback.message.answer("Введите комментарий (или отправьте /cancel для отмены):")

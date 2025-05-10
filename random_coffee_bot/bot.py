@@ -170,10 +170,9 @@ async def generate_unique_pairs(session, users: list[User]) -> list[Pair]:
         if pair_objs:
             last_pair = pair_objs[-1]
             last_pair.user3_id = odd.id
-            last_pair.user3_username = odd.username
             session.add(last_pair)
         else:
-            print(f"⚠️ Один пользователь остался без пары: {odd.username or odd.id}")
+            print(f"⚠️ Один пользователь остался без пары: {odd.id}")
 
     return pair_objs
 
@@ -298,6 +297,15 @@ def show_next_runs(scheduler: AsyncIOScheduler):
         next_run = job.next_run_time
         print(f"🛠 Задача '{job.id}' запустится в: {next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else 'нет запланированного запуска'}")
 
+
+def get_next_pair_date(scheduler: AsyncIOScheduler):
+    job = next((job for job in scheduler.get_jobs() if job.id == 'auto_pairing_weekly'), None)
+
+    if job:
+        next_run = job.next_run_time
+        print(f"🛠 Задача '{job.id}' запустится в: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+        # или напрямую возвращать next_run.strftime
+
 # отображение для консоли его в проде не будет
 def job_listener(event):
     show_next_runs(scheduler)
@@ -360,8 +368,8 @@ async def schedule_feedback_jobs(session_maker):
         interval_minutes = int(setting.value) if setting and setting.value else 2
         start_date = setting.first_matching_date if setting and setting.first_matching_date else datetime.utcnow()
 
-        # feedback_minutes = interval_minutes
-        # pairing_minutes = interval_minutes
+        feedback_minutes = interval_minutes
+        pairing_minutes = interval_minutes
         # reload_job_minutes = interval_minutes -1
         pairing_day = interval_minutes * 7
         feedback_day = pairing_day - 3
@@ -401,9 +409,9 @@ async def schedule_feedback_jobs(session_maker):
         print(f"🆕 '{job_id}' пересоздана. Старт: {next_time}")
 
     # в конце start_date=start_date
-    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, interval_minutes, start_date=start_date)
-    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, interval_minutes, start_date=start_date)
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, interval_minutes, start_date=start_date)
+    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, start_date=start_date)
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, feedback_minutes, start_date=start_date)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_minutes, start_date=start_date)
 
     # просто вывод в консоль его в проде не будет
     show_next_runs(scheduler)
