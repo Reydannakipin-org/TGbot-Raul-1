@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    env_file: 
+      - ./random_coffee_bot/.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  app:
+    build: .
+    command: >
+      bash -c "
+        alembic upgrade head &&
+        python main.py
+      "
+    volumes:
+      - .:/app
+    env_file:
+      - ./random_coffee_bot/.env
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
