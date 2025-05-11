@@ -8,12 +8,8 @@ from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 
-import os
-from dotenv import load_dotenv
 from aiogram import types
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+import os
 
 # Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
@@ -30,6 +26,7 @@ from services.user_service import (
     create_text_with_default_interval,
     create_text_status_active,
     create_text_random_coffee,
+    upload_to_drive,
 )
 
 # Импорт фильтров и состояний
@@ -50,9 +47,6 @@ from keyboards.user_buttons import (
 
 NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:[-\s][A-Za-zА-Яа-яЁё]+)*$'
 
-load_dotenv()
-
-folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +147,7 @@ async def process_last_name_sending(message: Message, state: FSMContext):
         return await message.answer(TEXTS['error_access'])
     user_telegram_id = message.from_user.id
 
-    last_name = message.text.strip()  # type: ignore
+    last_name = message.text.strip()
     logger.info(f'Получено сообщение в качестве фамилии: {last_name}')
 
     try:
@@ -666,33 +660,10 @@ async def text_random_coffee(message: Message):
         await message.answer(text)
 
 
-def upload_to_drive(file_path, file_name):
-    SCOPES = ['https://www.googleapis.com/auth/drive']
-    SERVICE_ACCOUNT_FILE = 'random_coffee_bot/credentials.json'
-
-    credentials = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-
-    service = build('drive', 'v3', credentials=credentials)
-
-    file_metadata = {
-        'name': file_name,
-        'parents': [folder_id]
-    }
-
-    media = MediaFileUpload(file_path, mimetype='image/jpeg')
-
-    try:
-        file = service.files().create(
-            body=file_metadata, media_body=media, fields='id'
-        ).execute()
-        return file.get('id')
-    except Exception as e:
-        print(f"Ошибка при загрузке файла: {e}")
-        return None
-
-
-@user_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_send_photo'])
+@user_router.message(
+    F.text == KEYBOARD_BUTTON_TEXTS['button_send_photo'],
+    StateFilter(default_state)
+)
 async def request_photo_handler(message: types.Message, state: FSMContext):
     '''
     Проверяет нажал ли пользователь на кнопку отправить фото.
@@ -714,49 +685,35 @@ async def cancel_handler(message: types.Message, state: FSMContext):
 
 
 @user_router.message(StateFilter(FSMUserForm.waiting_for_photo))
-async def album_handler(message: types.Message, state: FSMContext):
+async def photo_handler(message: Message, state: FSMContext):
+    if not message.photo:
+        await message.answer("Пожалуйста, отправьте только фото.")
+        return
 
-    if message.media_group_id or message.photo:
-        success_count = 0
-        error_count = 0
+    photo = message.photo[-1]
+    file_id = photo.file_id
+    file = await message.bot.get_file(file_id)
+    destination = f'./{file_id}.jpg'
 
-        current_date = datetime.now().strftime("%Y.%m.%d")
+    await message.bot.download_file(file.file_path, destination=destination)
 
-        if not message.media_group_id:
-            photos = [message.photo]
-        else:
-            photos = message.photo
+    user_name = message.from_user.full_name
+    current_time = datetime.now().strftime("%Y.%m.%d")
 
-        for photo in photos:
-            file_id = photo.file_id
+    file_name = f"{current_time} - {user_name}.jpg"
 
-            file_info = await message.bot.get_file(file_id)
-            destination = f'./{file_id}.jpg'
-            await message.bot.download_file(
-                file_info.file_path,
-                destination=destination
-            )
+    upload_result = upload_to_drive(destination, file_name)
 
-            user_name = message.from_user.full_name
-            file_name = f"{current_date} от {user_name}.jpg"
+    if upload_result:
+        await message.answer("Успешно отправлено одно фото! 🎉")
+    else:
+        await message.answer(
+            "Произошла ошибка при загрузке фото. "
+            "Пожалуйста, попробуйте еще раз."
+        )
 
-            upload_result = upload_to_drive(destination, file_name)
-
-            if upload_result:
-                success_count += 1
-            else:
-                error_count += 1
-
-            os.remove(destination)
-
-        result_message = f"Успешно обработано {success_count} фото."
-
-        if error_count > 0:
-            result_message += f" Произошло ошибок при загрузке: {error_count} фото."
-
-        await message.answer(result_message)
-
-        await state.clear()
+    os.remove(destination)
+    await state.clear()
 
 
 #Хэндлер для тестов нужно будет удалить
