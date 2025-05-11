@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  postgres:
+  db:
     image: postgres:16-alpine
     restart: always
     env_file: 
@@ -13,17 +13,21 @@ services:
 
   app:
     build: .
-    command: >
-      bash -c "
-        alembic upgrade head &&
-        python main.py
-      "
+    working_dir: /app
     volumes:
       - .:/app
     env_file:
       - ./random_coffee_bot/.env
     depends_on:
-      - postgres
+      - db
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
 
 volumes:
   postgres_data:

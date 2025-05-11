@@ -80,24 +80,23 @@ async def process_find_user_by_telegram_id(message: Message,
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, user_telegram_id)
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                await message.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
             await adm.reset_user_pause_until(session, user)
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
-    if user is None:
-        logger.info('Пользователя с полученным ID нет в БД.')
-        await message.answer(ADMIN_TEXTS['finding_user_fail'])
-        return
-    else:
-        logger.info(f'Пользователь {user_telegram_id} найден.')
-        data_text = adm.format_text_about_user(
-            ADMIN_TEXTS['finding_user_success'], user)
-        ikb_participant_management = generate_inline_manage(
-            user_telegram_id, user.has_permission)
-        await message.answer(data_text,
-                             reply_markup=ikb_participant_management)
-        await state.clear()
+    logger.info(f'Пользователь {user_telegram_id} найден.')
+    data_text = adm.format_text_about_user(
+        ADMIN_TEXTS['finding_user_success'], user)
+    ikb_participant_management = generate_inline_manage(
+        user_telegram_id, user.has_permission)
+    await message.answer(data_text,
+                            reply_markup=ikb_participant_management)
+    await state.clear()
 
 
 @admin_router.message(StateFilter(FSMAdminPanel.waiting_for_telegram_id),
@@ -179,6 +178,11 @@ async def show_user_details(callback: CallbackQuery,
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, user_telegram_id)
+            if user is None:
+                logger.info('Пользователя с полученным ID нет в БД.')
+                if isinstance(callback.message, Message):
+                    await callback.message.answer(ADMIN_TEXTS['finding_user_fail'])
+                return
             await adm.reset_user_pause_until(session, user)
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
@@ -186,20 +190,14 @@ async def show_user_details(callback: CallbackQuery,
             await callback.message.answer(ADMIN_TEXTS['db_error'])
         return
 
-    if user is None:
-        logger.info('Пользователя с полученным ID нет в БД.')
-        if isinstance(callback.message, Message):
-            await callback.message.answer(ADMIN_TEXTS['finding_user_fail'])
-        return
-    else:
-        logger.info(f'Пользователь {user_telegram_id} найден.')
-        data_text = adm.format_text_about_user(
-            ADMIN_TEXTS['finding_user_success'], user)
-        ikb_participant_management = generate_inline_manage(
-            user_telegram_id, user.has_permission)
-        if isinstance(callback.message, Message):
-            await callback.message.edit_text(
-                data_text, reply_markup=ikb_participant_management)
+    logger.info(f'Пользователь {user_telegram_id} найден.')
+    data_text = adm.format_text_about_user(
+        ADMIN_TEXTS['finding_user_success'], user)
+    ikb_participant_management = generate_inline_manage(
+        user_telegram_id, user.has_permission)
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            data_text, reply_markup=ikb_participant_management)
     await callback.answer()
 
 
@@ -215,7 +213,7 @@ async def process_inline_cancel(callback: CallbackQuery):
 
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_by_telegram_id(session, user_telegram_id)
+            user = await get_user_by_telegram_id(session, int(user_telegram_id))
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
@@ -585,7 +583,7 @@ async def process_set_new_interval(callback: CallbackQuery):
     try:
         new_interval = int(new_interval_str.strip())
     except ValueError:
-        logger.error('Невозможно привести интервал из коллюэка к int.')
+        logger.error('Невозможно привести интервал из коллбэка к int.')
         return
     try:
         async with AsyncSessionLocal() as session:
@@ -739,13 +737,19 @@ async def process_get_text_of_notification(message: Message,
                              StateFilter(default_state))
 async def process_send_notif(callback: CallbackQuery, bot: Bot):
     await callback.answer()
-    _, notif_id = adm.parse_callback_data(callback.data)
+    _, notif_id_str = adm.parse_callback_data(callback.data)
     try:
+        notif_id = int(notif_id_str)
         notif = await adm.get_notif(notif_id)
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
         if isinstance(callback.message, Message):
             await callback.message.answer(ADMIN_TEXTS['db_error'])
+        return
+    except ValueError:
+        logger.error('Не передан id нотификации в коллбэке.')
+        if isinstance(callback.message, Message):
+            await callback.message.answer(ADMIN_TEXTS['code_error'])
         return
     if isinstance(callback.message, Message):
         await callback.message.edit_text(ADMIN_TEXTS['start_sending_notif']
@@ -789,8 +793,8 @@ async def process_cancel_notif(callback: CallbackQuery):
 # Служебная команда на время разработки
 @admin_router.message(Command(commands='pair'))
 async def process_create_pair(message: Message):
-    user1_id = 2
-    user2_id = 3
+    user1_id = 1
+    user2_id = 2
 
     try:
         async with AsyncSessionLocal() as session:

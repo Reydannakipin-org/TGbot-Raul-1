@@ -274,8 +274,10 @@ async def export_pairs_to_gsheet(
     loop = asyncio.get_running_loop()
 
     rows: list[list[str]] = []
-    headers = ['Дата', 'Коллега 1', 'Была встреча?', 'Коммент',
-               'Коллега 2', 'Была встреча?', 'Коммент']
+    headers = ['Дата',
+               'Коллега 1', 'Была встреча?', 'Коммент',
+               'Коллега 2', 'Была встреча?', 'Коммент',
+               'Коллега 3', 'Была встреча?', 'Коммент']
     rows.append(headers)
 
     def get_feedback_data(fb: Feedback | None) -> tuple[str, str]:
@@ -296,8 +298,20 @@ async def export_pairs_to_gsheet(
                         ).strip()
         fb2 = fb_by_user.get(p.user2_id)
         u2_did_met, u2_comment = get_feedback_data(fb2)
-        rows.append([pairing_date, u1_full_name, u1_did_met, u1_comment,
-                     u2_full_name, u2_did_met, u2_comment])
+        if p.user3_id:
+            u3_full_name = (f'{p.user3.first_name or ""} {p.user3.last_name or ""}'
+                            ).strip()
+            fb3 = fb_by_user.get(p.user3_id)
+            u3_did_met, u3_comment = get_feedback_data(fb3)
+        else:
+            u3_full_name = ''
+            u3_did_met = ''
+            u3_comment = ''
+        rows.append([pairing_date,
+                    u1_full_name, u1_did_met, u1_comment,
+                    u2_full_name, u2_did_met, u2_comment,
+                    u3_full_name, u3_did_met, u3_comment])
+
     logger.info(f'Сформировано строк {len(rows)-1}')
 
     await loop.run_in_executor(None, worksheet.clear)

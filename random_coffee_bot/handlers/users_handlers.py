@@ -308,11 +308,11 @@ async def pause_participation(message: Message, state: FSMContext):
 
     if user.is_active:
         await message.answer(
-            "Вы точно хотите приостановить участие?",
+            "Ты точно хочешь приостановить участие?",
             reply_markup=create_deactivate_keyboard()
         )
     else:
-        await message.answer("Вы уже неактивны.",
+        await message.answer("Ты уже неактивен(-на).",
                              reply_markup=create_inactive_user_keyboard())
 
 
@@ -332,11 +332,11 @@ async def resume_participation(message: Message, state: FSMContext):
 
     if user and not user.is_active:
         await message.answer(
-            "Вы точно хотите возобновить участие?",
+            "Ты точно хочешь возобновить участие?",
             reply_markup=create_activate_keyboard()
         )
     else:
-        await message.answer("Вы уже активны.",
+        await message.answer("Ты уже активен(-на).",
                              reply_markup=create_active_user_keyboard())
 
 
@@ -362,18 +362,18 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
                 if user.is_active:
                     await set_user_active(session, telegram_id, False)
                     await callback_query.message.answer(
-                        'Вы приостановили участие',
+                        'Ты приостановил(-а) участие',
                         reply_markup=create_inactive_user_keyboard()
                     )
                 else:
                     await callback_query.answer(
-                        "Вы уже приостановили участие.",
+                        "Ты уже приостановил(-а) участие.",
                         show_alert=True
                     )
 
             elif callback_query.data == "confirm_deactivate_no":
                 await callback_query.answer(
-                    'Вы решили не изменять статус участия',
+                    'Ты решил(-а) не изменять статус участия',
                     show_alert=True
                 )
 
@@ -382,7 +382,7 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
         except Exception as e:
             print(f"Произошла ошибка: {e}")
             await callback_query.answer(
-                "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
+                "Произошла ошибка. Пожалуйста, попробуй еще раз.",
                 show_alert=True
             )
 
@@ -410,18 +410,18 @@ async def process_activate_confirmation(callback_query: CallbackQuery):
                 if not user.is_active:
                     await set_user_active(session, telegram_id, True)
                     await callback_query.message.answer(
-                        'Вы возобновили участие',
+                        'Ты возобновил(-а) участие',
                         reply_markup=create_active_user_keyboard()
                     )
                 else:
                     await callback_query.answer(
-                        "Вы уже активны.",
+                        "Ты уже активен(-на).",
                         show_alert=True
                     )
 
             elif callback_query.data == "confirm_activate_no":
                 await callback_query.answer(
-                    'Вы решили не изменять статус участия',
+                    'Ты решил(-а) не изменять статус участия',
                     show_alert=True
                 )
 
@@ -430,7 +430,7 @@ async def process_activate_confirmation(callback_query: CallbackQuery):
         except Exception as e:
             print(f"Произошла ошибка: {e}")
             await callback_query.answer(
-                "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
+                "Произошла ошибка. Пожалуйста, попробуй еще раз.",
                 show_alert=True
             )
 
@@ -593,7 +593,11 @@ async def process_set_or_change_interval(callback: CallbackQuery):
     try:
         async with AsyncSessionLocal() as session:
             if callback.data.startswith('new_interval:'):
-                _, new_interval = parse_callback_data(callback.data)
+                _, new_interval_str = parse_callback_data(callback.data)
+                try:
+                    new_interval = int(new_interval_str.strip())
+                except ValueError:
+                    new_interval = None
             else:
                 new_interval = None
 
