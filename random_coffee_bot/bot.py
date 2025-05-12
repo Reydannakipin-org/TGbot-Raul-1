@@ -386,8 +386,7 @@ async def schedule_feedback_jobs(session_maker):
                 print(f"✅ '{job_id}' уже запланирована с тем же интервалом.")
                 return
             else:
-                print(
-                    f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_minutes}. Перезапускаем...")
+                print(f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_minutes}. Перезапускаем...")
                 scheduler.remove_job(job_id)
 
         effective_start = start_date or now
@@ -397,7 +396,7 @@ async def schedule_feedback_jobs(session_maker):
             trigger=IntervalTrigger(minutes=interval_minutes, start_date=effective_start),
             id=job_id,
             replace_existing=True,
-            misfire_grace_time=300,
+            misfire_grace_time=172800,  # 48 часов (2 дня)
         )
         print(f"🆕 '{job_id}' пересоздана. Старт: {effective_start}")
 
@@ -405,15 +404,15 @@ async def schedule_feedback_jobs(session_maker):
         time_since_start = (now - effective_start).total_seconds()
         interval_sec = interval_minutes * 60
 
-        if 0 < time_since_start < 300 and time_since_start % interval_sec < 60:
-            print(f"⚠️ '{job_id}' была пропущена, запускаем вручную (отставание {int(time_since_start)} сек.)...")
+        # Если прошло менее 48 часов (172800 секунд) с момента запланированного времени
+        if 0 < time_since_start < 172800 and time_since_start % interval_sec < 60:
             scheduler._create_executor("default").submit_job(
                 scheduler.get_job(job_id),
                 run_times=[now]
             )
 
     start_date_for_auto_pairing = start_date
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, interval_minutes)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, start_date=start_date_for_auto_pairing)
 
     start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing)
     schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, start_date=start_date_for_feedback_dispatcher)
