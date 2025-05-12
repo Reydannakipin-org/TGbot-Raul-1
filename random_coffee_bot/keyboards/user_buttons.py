@@ -84,7 +84,7 @@ def meeting_question_kb(pair_id: int):
 
 def comment_question_kb(pair_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✍️ Оставить комментарий", callback_data=f"leave_comment:{pair_id}")],
+        [InlineKeyboardButton(text="✍️ Комментарий (оставить/изменить)", callback_data=f"leave_comment:{pair_id}")],
         [InlineKeyboardButton(text="⏭️ Без комментария", callback_data=f"no_comment:{pair_id}")]
     ])
 

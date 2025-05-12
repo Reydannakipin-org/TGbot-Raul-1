@@ -394,7 +394,7 @@ async def schedule_feedback_jobs(session_maker):
 
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(days=interval_days, start_date=effective_start),
+            trigger=IntervalTrigger(minutes=interval_days, start_date=effective_start),
             id=job_id,
             replace_existing=True,
             misfire_grace_time=172800,  # 2 дня
@@ -412,10 +412,10 @@ async def schedule_feedback_jobs(session_maker):
             )
 
     start_date_for_auto_pairing = start_date
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, start_date=start_date_for_auto_pairing)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, interval_minutes, start_date=start_date_for_auto_pairing)
 
     start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing)
-    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, start_date=start_date_for_feedback_dispatcher)
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, interval_minutes, start_date=start_date_for_feedback_dispatcher)
 
     schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, start_date=start_date_for_auto_pairing)
 

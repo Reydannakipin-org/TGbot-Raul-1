@@ -461,10 +461,10 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
             if existing_feedback:
                 # Если отзыв с ответом "нет" уже существует, уведомляем пользователя
                 if existing_feedback.did_meet is False:
-                    await callback.message.answer("Вы уже оставили отзыв с ответом 'нет' для этой встречи.")
+                    await callback.message.answer("Ты уже оставил отзыв с ответом 'нет' для этой встречи.")
                     return
                 if existing_feedback.did_meet is True:
-                    await callback.message.answer("Вы уже оставили отзыв с ответом 'да' для этой встречи и не можете поменять на 'нет'.")
+                    await callback.message.answer("Ты уже оставил отзыв с ответом 'да' для этой встречи и не можешь поменять на 'нет'.")
                     return
                 else:
                     # Если отзыв с ответом "да" существует, обновляем его
@@ -480,26 +480,23 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
 
             await callback.message.answer("Спасибо за информацию!")
 
+
         elif data.startswith("meeting_yes"):
             if existing_feedback:
-                # Если уже был отзыв с "нет", предложим оставить комментарий
-                if existing_feedback.did_meet is False:
-                    await callback.message.answer(
-                        "Вы оставили отзыв с 'нет'. Хотите оставить комментарий?",
-                        reply_markup=comment_question_kb(pair_id)
-                    )
-                else:
-                    # Если отзыв с "да" уже существует, просто просим оставить комментарий
-                    await callback.message.answer(
-                        "Хотите оставить комментарий?",
-                        reply_markup=comment_question_kb(pair_id)
-                    )
+                if existing_feedback.did_meet is not True:
+                    existing_feedback.did_meet = True
+                    await session.commit()
+
             else:
-                # Если отзыва нет, создаём новый
-                await callback.message.answer(
-                    "Хотите оставить комментарий?",
-                    reply_markup=comment_question_kb(pair_id)
-                )
+                feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=True)
+                session.add(feedback)
+                await session.commit()
+
+            await callback.message.answer(
+                "Хочешь оставить комментарий?",
+                reply_markup=comment_question_kb(pair_id)
+
+            )
 
 
 # --- Ответ: Комментарий или нет ---
@@ -531,7 +528,7 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
         if action == "no_comment":
             if existing_feedback:
                 # Если отзыв без комментария уже существует
-                await callback.message.answer("Вы уже оставили отзыв без комментария.")
+                await callback.message.answer("Спасибо! Отзыв учтён ✅")
                 return
 
             feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=True, comment=None)
@@ -545,7 +542,7 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
             # Если выбран вариант с комментарием, запускаем ожидание ввода
             await state.set_state(CommentStates.waiting_for_comment)
             await state.update_data(pair_id=pair_id)
-            await callback.message.answer("Введите комментарий (или отправьте /cancel для отмены):")
+            await callback.message.answer("Введи комментарий (или отправь /cancel, чтобы отменить)")
 #11111
 @user_router.callback_query(F.data.startswith("confirm_edit") | F.data.startswith("cancel_edit"))
 async def handle_edit_decision(callback: types.CallbackQuery, state: FSMContext, **kwargs):
@@ -604,7 +601,7 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
                     ]
 
     if comment_text in button_texts:
-        await message.answer("Пожалуйста, введите комментарий вручную, а не выбирайте кнопку.")
+        await message.answer("Пожалуйста, введи комментарий вручную, а не выбирай кнопку.")
         return
 
     data = await state.get_data()
@@ -632,7 +629,7 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
         # Сохраняем временно комментарий и спрашиваем подтверждение
         await state.update_data(temp_comment=comment_text)
         await message.answer(
-            "Вы уже оставляли комментарий для этой встречи.\nХотите изменить его?",
+            "Ты уже оставлял комментарий для этой встречи.\nХочешь изменить его?",
             reply_markup=confirm_edit_comment_kb(pair_id)
         )
         return
