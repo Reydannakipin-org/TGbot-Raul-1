@@ -98,8 +98,9 @@ def create_inactive_user_keyboard():
 
 
 async def generate_inline_interval(session: AsyncSession):
-    admin_interval = await get_global_interval(session)
-    text = f'По умолчанию: 1 раз в {admin_interval} недели'
+    # admin_interval = await get_global_interval(session)
+    # text = f'По умолчанию: 1 раз в {admin_interval} недели'
+    text = 'По умолчанию'
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
