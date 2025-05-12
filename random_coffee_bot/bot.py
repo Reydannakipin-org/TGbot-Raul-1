@@ -398,6 +398,7 @@ async def schedule_feedback_jobs(session_maker):
             trigger=IntervalTrigger(days=interval_days, start_date=next_time),
             id=job_id,
             replace_existing=True,
+            misfire_grace_time=172800
         )
         print(f"🆕 '{job_id}' пересоздана. Старт: {next_time}")
 
