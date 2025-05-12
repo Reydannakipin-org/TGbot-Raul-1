@@ -185,6 +185,18 @@ async def create_text_with_default_interval(
     return data_text
 
 
+async def create_text_for_select_an_interval(session: AsyncSession, text: str) -> str:
+    '''
+    Создает текст для выбора интервала встреч.
+    '''
+    admin_current_interval = await get_global_interval(session)
+
+    data_text = text.format(
+        their_interval=admin_current_interval
+    )
+    return data_text
+
+
 async def create_text_with_interval(
     session: AsyncSession, text: str, user_id: int
 ) -> str:

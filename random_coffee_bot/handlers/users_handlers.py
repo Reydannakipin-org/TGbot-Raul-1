@@ -6,10 +6,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy.exc import SQLAlchemyError
-from datetime import datetime
-
-from aiogram import types
-import os
 
 # Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
@@ -26,7 +22,6 @@ from services.user_service import (
     create_text_with_default_interval,
     create_text_status_active,
     create_text_random_coffee,
-    upload_to_drive,
 )
 
 # Импорт фильтров и состояний
@@ -541,9 +536,23 @@ async def process_frequency(message: Message):
     try:
         async with AsyncSessionLocal() as session:
             user_id = message.from_user.id
-            data_text = await create_text_with_interval(
-                session, USER_TEXTS['user_confirm_changing_interval'], user_id
+            result = await session.execute(
+                select(User.pairing_interval).where(
+                    User.telegram_id == user_id
+                )
             )
+
+            pairing_interval = result.scalars().first()
+
+            if pairing_interval is None:
+                data_text = await create_text_with_interval(
+                    session, USER_TEXTS['no_interval'], user_id
+                )
+            else:
+                data_text = await create_text_with_interval(
+                    session, USER_TEXTS['user_confirm_changing_interval'],
+                    user_id
+                )
 
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
@@ -567,9 +576,14 @@ async def handle_callback_query_yes(callback: CallbackQuery):
     await callback.message.delete()
     try:
         async with AsyncSessionLocal() as session:
+            formatted_text = await create_text_for_select_an_interval(
+                session, USER_TEXTS['update_frequency']
+            )
+
             reply_markup = await generate_inline_interval(session)
+
             await callback.message.answer(
-                USER_TEXTS['update_frequency'],
+                formatted_text,
                 reply_markup=reply_markup
             )
 
@@ -721,7 +735,7 @@ async def photo_handler(message: Message, state: FSMContext):
 async def set_interval_command(message: Message):
     try:
         # Устанавливаем новый интервал (например, 2)
-        new_interval = 2  # Замените на нужный вам интервал
+        new_interval = 4  # Замените на нужный вам интервал
 
         async with AsyncSessionLocal() as session:
             await set_new_global_interval(session, new_interval)
