@@ -1,3 +1,4 @@
+import os
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -17,13 +18,25 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from database.models import User, Pair, Setting, Feedback
+from dotenv import load_dotenv
 
+load_dotenv()
 
-# пусть пока тут будет когда будет постгрес тогда будет видно где лучше быть
+DATABASE_URL = os.getenv("DATABASE_URL").replace("+asyncpg", "+psycopg2")
+
+# подлкючение для постгресса
 scheduler = AsyncIOScheduler(
-        jobstores={'default': SQLAlchemyJobStore(url='sqlite:///jobs.sqlite')},
-        timezone='Europe/Moscow'
-    )
+    jobstores={
+        'default': SQLAlchemyJobStore(url=DATABASE_URL)
+    },
+    timezone='Europe/Moscow'
+)
+# пусть пока тут будет когда будет постгрес тогда будет видно где лучше быть
+# scheduler = AsyncIOScheduler(
+#         jobstores={'default': SQLAlchemyJobStore(url='sqlite:///jobs.sqlite')},
+#         timezone='Europe/Moscow'
+#     )
+
 current_interval = None
 
 class FeedbackStates(StatesGroup):
