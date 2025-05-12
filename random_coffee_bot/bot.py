@@ -376,35 +376,44 @@ async def schedule_feedback_jobs(session_maker):
         print(f"🔁 Интервал изменился: {current_interval} ➡️ {interval_minutes}")
         current_interval = interval_minutes
 
-    def schedule_or_reschedule(job_id, func, interval_days, start_date=None):
+    def schedule_or_reschedule(job_id, func, interval_minutes, start_date=None):
         job = scheduler.get_job(job_id)
+        now = datetime.utcnow()
 
         if job:
-            current_interval_from_job = job.trigger.interval.days
-            if int(current_interval_from_job) == interval_days:
+            current_interval_from_job = job.trigger.interval.total_seconds() // 60
+            if int(current_interval_from_job) == interval_minutes:
                 print(f"✅ '{job_id}' уже запланирована с тем же интервалом.")
                 return
             else:
                 print(
-                    f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_days}. Перезапускаем...")
-                next_time = job.next_run_time or datetime.utcnow()
+                    f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_minutes}. Перезапускаем...")
                 scheduler.remove_job(job_id)
-        else:
-            print(f"➕ '{job_id}' не существует. Создаём заново.")
-            next_time = start_date or datetime.utcnow()
+
+        effective_start = start_date or now
 
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(days=interval_days, start_date=next_time),
+            trigger=IntervalTrigger(minutes=interval_minutes, start_date=effective_start),
             id=job_id,
             replace_existing=True,
-            misfire_grace_time=172800
+            misfire_grace_time=300,
         )
-        print(f"🆕 '{job_id}' пересоздана. Старт: {next_time}")
+        print(f"🆕 '{job_id}' пересоздана. Старт: {effective_start}")
 
-    # Запускаем задачу auto_pairing_weekly
-    start_date_for_auto_pairing = start_date  # Можно изменить, если требуется логика
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, start_date=start_date_for_auto_pairing)
+        # 👉 Ручной запуск, если задача должна была уже отработать
+        time_since_start = (now - effective_start).total_seconds()
+        interval_sec = interval_minutes * 60
+
+        if 0 < time_since_start < 300 and time_since_start % interval_sec < 60:
+            print(f"⚠️ '{job_id}' была пропущена, запускаем вручную (отставание {int(time_since_start)} сек.)...")
+            scheduler._create_executor("default").submit_job(
+                scheduler.get_job(job_id),
+                run_times=[now]
+            )
+
+    start_date_for_auto_pairing = start_date
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, interval_minutes)
 
     start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing)
     schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, start_date=start_date_for_feedback_dispatcher)
