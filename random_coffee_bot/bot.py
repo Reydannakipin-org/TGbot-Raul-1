@@ -376,35 +376,35 @@ async def schedule_feedback_jobs(session_maker):
         print(f"🔁 Интервал изменился: {current_interval} ➡️ {interval_minutes}")
         current_interval = interval_minutes
 
-    def schedule_or_reschedule(job_id, func, interval_minutes, start_date=None):
+    def schedule_or_reschedule(job_id, func, interval_days, start_date=None):
         job = scheduler.get_job(job_id)
         now = datetime.utcnow()
 
         if job:
-            current_interval_from_job = job.trigger.interval.total_seconds() // 60
-            if int(current_interval_from_job) == interval_minutes:
+            current_interval_from_job = job.trigger.interval.total_seconds() // 86400
+            if int(current_interval_from_job) == interval_days:
                 print(f"✅ '{job_id}' уже запланирована с тем же интервалом.")
                 return
             else:
-                print(f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_minutes}. Перезапускаем...")
+                print(
+                    f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_days}. Перезапускаем...")
                 scheduler.remove_job(job_id)
 
         effective_start = start_date or now
 
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(minutes=interval_minutes, start_date=effective_start),
+            trigger=IntervalTrigger(days=interval_days, start_date=effective_start),
             id=job_id,
             replace_existing=True,
-            misfire_grace_time=172800,  # 48 часов (2 дня)
+            misfire_grace_time=172800,  # 2 дня
         )
         print(f"🆕 '{job_id}' пересоздана. Старт: {effective_start}")
 
         # 👉 Ручной запуск, если задача должна была уже отработать
         time_since_start = (now - effective_start).total_seconds()
-        interval_sec = interval_minutes * 60
+        interval_sec = interval_days * 86400  # секунды в дне
 
-        # Если прошло менее 48 часов (172800 секунд) с момента запланированного времени
         if 0 < time_since_start < 172800 and time_since_start % interval_sec < 60:
             scheduler._create_executor("default").submit_job(
                 scheduler.get_job(job_id),
