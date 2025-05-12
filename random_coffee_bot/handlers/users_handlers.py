@@ -1,27 +1,34 @@
 import logging
+import os
+from datetime import datetime
+
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
-from sqlalchemy.exc import SQLAlchemyError
 
 # Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
+from database.models import User
 from services.user_service import (
     create_user,
+    create_text_for_select_an_interval,
+    create_text_with_default_interval,
+    create_text_random_coffee,
+    create_text_status_active,
     delete_user,
     get_user_by_telegram_id,
+    parse_callback_data,
+    set_new_global_interval,
+    set_new_user_interval,
     set_user_active,
     update_user_field,
+    upload_to_drive,
     create_text_with_interval,
-    set_new_global_interval,
-    parse_callback_data,
-    set_new_user_interval,
-    create_text_with_default_interval,
-    create_text_status_active,
-    create_text_random_coffee,
 )
 
 # Импорт фильтров и состояний
@@ -29,7 +36,6 @@ from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
 from states.user_states import FSMUserForm
 
 # Импорт текстов и клавиатур
-from texts import TEXTS, KEYBOARD_BUTTON_TEXTS, USER_TEXTS, ADMIN_TEXTS
 from keyboards.user_buttons import (
     create_active_user_keyboard,
     create_activate_keyboard,
@@ -39,6 +45,9 @@ from keyboards.user_buttons import (
     generate_inline_interval,
     yes_or_no_keyboard,
 )
+
+# Импорт текстов для пользователей и администраторов
+from texts import TEXTS, KEYBOARD_BUTTON_TEXTS, USER_TEXTS, ADMIN_TEXTS
 
 NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:[-\s][A-Za-zА-Яа-яЁё]+)*$'
 
@@ -580,7 +589,7 @@ async def handle_callback_query_yes(callback: CallbackQuery):
                 session, USER_TEXTS['update_frequency']
             )
 
-            reply_markup = await generate_inline_interval(session)
+            reply_markup = generate_inline_interval()
 
             await callback.message.answer(
                 formatted_text,
@@ -678,7 +687,7 @@ async def text_random_coffee(message: Message):
     F.text == KEYBOARD_BUTTON_TEXTS['button_send_photo'],
     StateFilter(default_state)
 )
-async def request_photo_handler(message: types.Message, state: FSMContext):
+async def request_photo_handler(message: Message, state: FSMContext):
     '''
     Проверяет нажал ли пользователь на кнопку отправить фото.
     '''
@@ -690,7 +699,7 @@ async def request_photo_handler(message: types.Message, state: FSMContext):
     Command("cancel"),
     StateFilter(FSMUserForm.waiting_for_photo)
 )
-async def cancel_handler(message: types.Message, state: FSMContext):
+async def cancel_handler(message: Message, state: FSMContext):
     '''
     С помощью команды /cancel можно выйти из состояния отправки фото.
     '''
