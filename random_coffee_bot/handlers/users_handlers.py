@@ -20,10 +20,8 @@ from services.user_service import (
     create_text_with_default_interval,
     create_text_random_coffee,
     create_text_status_active,
-    delete_user,
     get_user_by_telegram_id,
     parse_callback_data,
-    set_new_global_interval,
     set_new_user_interval,
     set_user_active,
     update_user_field,
@@ -47,10 +45,13 @@ from keyboards.user_buttons import (
 )
 
 # Импорт текстов для пользователей и администраторов
-from texts import TEXTS, KEYBOARD_BUTTON_TEXTS, USER_TEXTS, ADMIN_TEXTS
-
-NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:[-\s][A-Za-zА-Яа-яЁё]+)*$'
-
+from texts import (
+    TEXTS,
+    KEYBOARD_BUTTON_TEXTS,
+    USER_TEXTS,
+    ADMIN_TEXTS,
+    NAME_PATTERN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ async def process_first_name_sending(message: Message, state: FSMContext):
         return await message.answer(TEXTS['error_access'])
     user_telegram_id = message.from_user.id
 
-    first_name = message.text.strip()  # type: ignore
+    first_name = message.text.strip()
     logger.info(f'Получено сообщение в качестве имени: {first_name}')
 
     try:
@@ -195,27 +196,6 @@ async def process_help_command(message: Message):
     await message.answer(TEXTS['help'])
 
 
-# Служебная команда только на время разработки! Удаляет вас из БД.
-@user_router.message(Command(commands='delete_me'), StateFilter(default_state))
-async def process_delete_me_command(message: Message):
-    if message.from_user is None:
-        return await message.answer(TEXTS['error_access'])
-    user_telegram_id = message.from_user.id
-
-    try:
-        async with AsyncSessionLocal() as session:
-            deleted = await delete_user(session, user_telegram_id)
-            if deleted:
-                await message.answer('Ваш аккаунт успешно удалён.',
-                                     reply_markup=ReplyKeyboardRemove())
-                logger.info('Пользователь удален')
-            else:
-                await message.answer('Вы не зарегистрированы, нечего удалять.')
-    except SQLAlchemyError:
-        logger.exception('Ошибка при удалении пользователя')
-        await message.answer(TEXTS['db_error'])
-
-
 @user_router.message(Command(commands='profile'), StateFilter(default_state))
 async def process_send_profile_data(message: Message):
     '''
@@ -255,38 +235,6 @@ async def process_change_name(message: Message, state: FSMContext):
     '''
     await message.answer(TEXTS['ask_first_name'])
     await state.set_state(FSMUserForm.waiting_for_first_name)
-
-
-# Служебная команда только на время разработки!
-@user_router.message(Command(commands='user'), StateFilter(default_state))
-async def process_user(message: Message):
-    """Хэндлер для команды /user. Получает информацию о пользователе."""
-    if message.from_user is None:
-        return await message.answer(TEXTS['error_access'])
-    telegram_id = message.from_user.id
-
-    async with AsyncSessionLocal() as session:
-        user = await get_user_by_telegram_id(session, telegram_id)
-
-    if user is not None:
-        if user.is_active:
-            keyboard = create_active_user_keyboard()
-            await message.answer(
-                "Добро пожаловать обратно! Вы активный пользователь.",
-                reply_markup=keyboard
-            )
-        else:
-            keyboard = create_inactive_user_keyboard()
-            await message.answer(
-                "Вы неактивны. Пожалуйста, свяжитесь с администратором.",
-                reply_markup=keyboard
-            )
-    else:
-        keyboard = create_inactive_user_keyboard()
-        await message.answer(
-            "Привет! Вы не зарегистрированы в системе.",
-            reply_markup=keyboard
-        )
 
 
 @user_router.message(
@@ -462,14 +410,12 @@ async def update_full_name(message: Message):
 
     try:
         async with AsyncSessionLocal() as session:
-            # Получаем текущее имя и фамилию пользователя
             user = await get_user_by_telegram_id(session, telegram_id)
 
             if user is None:
                 await message.answer("Пользователь не найден.")
                 return
 
-            # Форматируем сообщение с текущими данными
             user_message = (
                 f"Твои текущие данные: \n"
                 f"Имя: {user.first_name} \n"
@@ -477,7 +423,6 @@ async def update_full_name(message: Message):
                 "Ты уверен, что хочешь изменить их?"
             )
 
-        # Отправляем сообщение пользователю
         await message.answer(
             user_message,
             reply_markup=yes_or_no_keyboard()
@@ -691,7 +636,7 @@ async def request_photo_handler(message: Message, state: FSMContext):
     '''
     Проверяет нажал ли пользователь на кнопку отправить фото.
     '''
-    await message.answer("Пожалуйста, отправь свое фото.")
+    await message.answer(USER_TEXTS['send_photo'])
     await state.set_state(FSMUserForm.waiting_for_photo)
 
 
@@ -704,13 +649,13 @@ async def cancel_handler(message: Message, state: FSMContext):
     С помощью команды /cancel можно выйти из состояния отправки фото.
     '''
     await state.clear()
-    await message.answer("Отправка фото отменена.")
+    await message.answer(USER_TEXTS['cancellation_send_photo'])
 
 
 @user_router.message(StateFilter(FSMUserForm.waiting_for_photo))
 async def photo_handler(message: Message, state: FSMContext):
     if not message.photo:
-        await message.answer("Пожалуйста, отправьте только фото.")
+        await message.answer(USER_TEXTS['error_send_photo'])
         return
 
     photo = message.photo[-1]
@@ -728,7 +673,7 @@ async def photo_handler(message: Message, state: FSMContext):
     upload_result = upload_to_drive(destination, file_name)
 
     if upload_result:
-        await message.answer("Успешно отправлено одно фото! 🎉")
+        await message.answer(USER_TEXTS['photo_sent_successfully'])
     else:
         await message.answer(
             "Произошла ошибка при загрузке фото. "
@@ -739,28 +684,6 @@ async def photo_handler(message: Message, state: FSMContext):
     await state.clear()
 
 
-#Хэндлер для тестов нужно будет удалить
-@user_router.message(Command(commands='interval'))
-async def set_interval_command(message: Message):
-    try:
-        # Устанавливаем новый интервал (например, 2)
-        new_interval = 4  # Замените на нужный вам интервал
-
-        async with AsyncSessionLocal() as session:
-            await set_new_global_interval(session, new_interval)
-
-        await message.answer(
-            f"Глобальный интервал успешно изменен на {new_interval}."
-        )
-
-    except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
-        await message.answer(ADMIN_TEXTS['db_error'])
-    except Exception as e:
-        logger.exception('Произошла ошибка при изменении интервала')
-        await message.answer(f"Произошла ошибка: {str(e)}")
-
-
 @user_router.message(F.text)
 async def fallback_handler(message: Message):
     '''
@@ -768,5 +691,4 @@ async def fallback_handler(message: Message):
     так как он улавливает любую команду которую не смогли уловить
     другие хэндлеры.
     '''
-    await message.answer('Я не знаю такой команды random_coffee_bot. '
-                         'Пожалуйста, используй клавиатуру.')
+    await message.answer(USER_TEXTS['no_now'])

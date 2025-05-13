@@ -1,14 +1,14 @@
 from typing import Optional
 import logging
+import os
 
+from dotenv import load_dotenv
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-import os
-from dotenv import load_dotenv
-from googleapiclient.http import MediaFileUpload
 
 from database.models import Setting, User
 from texts import ADMIN_TEXTS, INTERVAL_TEXTS, USER_TEXTS
@@ -248,7 +248,7 @@ async def get_global_interval(session: AsyncSession) -> Optional[int]:
 
 async def get_user_interval(
     session: AsyncSession, user_id: int
-) -> Optional[str]:  # Изменено на Optional[str]
+) -> Optional[str]:
     '''
     Возвращает из базы данных значение интервала которое поставил пользователь.
     '''
@@ -330,30 +330,30 @@ def upload_to_drive(file_path, file_name):
         return None
 
 
-#Временно нужно будет удалить
-async def set_new_global_interval(session: AsyncSession, new_value: int
-                                  ) -> None:
-    '''
-    Изменяет значение глобального интервала в таблице settings.
-    Возвращает True, если интервал обновлен.
-    '''
-    try:
-        result = await session.execute(
-            select(Setting).where(Setting.key == 'global_interval')
-        )
-        setting = result.scalars().first()
+# #Временно нужно будет удалить
+# async def set_new_global_interval(session: AsyncSession, new_value: int
+#                                   ) -> None:
+#     '''
+#     Изменяет значение глобального интервала в таблице settings.
+#     Возвращает True, если интервал обновлен.
+#     '''
+#     try:
+#         result = await session.execute(
+#             select(Setting).where(Setting.key == 'global_interval')
+#         )
+#         setting = result.scalars().first()
 
-        if setting:
-            setting.value = new_value
-        else:
-            setting = Setting(key='global_interval', value=new_value)
-            session.add(setting)
+#         if setting:
+#             setting.value = new_value
+#         else:
+#             setting = Setting(key='global_interval', value=new_value)
+#             session.add(setting)
 
-        await session.commit()
-    except SQLAlchemyError as e:
-        await session.rollback()
-        logger.exception('Ошибка при установке нового интервала')
-        raise e
+#         await session.commit()
+#     except SQLAlchemyError as e:
+#         await session.rollback()
+#         logger.exception('Ошибка при установке нового интервала')
+#         raise e
 
 
 def parse_callback_data(data: str) -> tuple[str, str]:
