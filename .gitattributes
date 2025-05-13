@@ -1,0 +1,2 @@
+# все shell-скрипты держим с LF
+*.sh text eol=lf

@@ -5,15 +5,18 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from aiogram import F, Router
-from aiogram.filters import Command, CommandStart, StateFilter
+from aiogram import F, Router, types
+from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
 
 # Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
-from database.models import User
+from database.models import User, Feedback
+from bot import CommentStates, save_comment
 from services.user_service import (
     create_user,
     create_text_for_select_an_interval,
@@ -33,7 +36,6 @@ from services.user_service import (
 from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
 from states.user_states import FSMUserForm
 
-# Импорт текстов и клавиатур
 from keyboards.user_buttons import (
     create_active_user_keyboard,
     create_activate_keyboard,
@@ -42,9 +44,12 @@ from keyboards.user_buttons import (
     generate_inline_confirm_change_interval,
     generate_inline_interval,
     yes_or_no_keyboard,
+    meeting_question_kb,
+    comment_question_kb,
+    confirm_edit_comment_kb
 )
 
-# Импорт текстов для пользователей и администраторов
+# Импорт текстов
 from texts import (
     TEXTS,
     KEYBOARD_BUTTON_TEXTS,
@@ -53,6 +58,7 @@ from texts import (
     NAME_PATTERN,
 )
 from services.constants import DATE_FORMAT_1
+
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +99,9 @@ async def process_start_command(message: Message, state: FSMContext):
                 if not user.is_active:
                     await set_user_active(session, user_telegram_id, True)
                     logger.info('Статус пользователя изменен на Активный.')
-                await message.answer(TEXTS['re_start'])
+                await message.answer(
+                    TEXTS['re_start'],
+                    reply_markup=create_active_user_keyboard())
     except SQLAlchemyError as e:
         logger.exception('Ошибка при работе с базой данных: %s', str(e))
         await message.answer(TEXTS['db_error'])
@@ -296,6 +304,7 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
             )
 
 
+
 @user_router.callback_query(lambda c: c.data.startswith("confirm_activate_"),
                             StateFilter(default_state))
 async def process_activate_confirmation(callback_query: CallbackQuery):
@@ -344,6 +353,215 @@ async def process_activate_confirmation(callback_query: CallbackQuery):
                 USER_TEXTS['error_occurred'],
                 show_alert=True
             )
+
+
+# --- Ответ: Да/Нет встреча ---
+@user_router.callback_query(F.data.startswith("meeting_yes") | F.data.startswith("meeting_no"))
+async def process_meeting_feedback(callback: types.CallbackQuery, session_maker):
+    await callback.answer()
+    data = callback.data
+    _, pair_id_str = parse_callback_data(callback.data)
+    pair_id = int(pair_id_str)
+
+    telegram_user_id = callback.from_user.id
+
+    async with session_maker() as session:
+        user = await session.execute(select(User).filter_by(telegram_id=telegram_user_id))
+        user = user.scalar_one_or_none()
+
+        if user is None:
+            await callback.message.answer("Пользователь не найден.")
+            return
+
+        user_id = user.id
+
+        # Проверяем, существует ли уже отзыв для этой пары и пользователя
+        existing_feedback = await session.execute(
+            select(Feedback).filter_by(pair_id=pair_id, user_id=user_id)
+        )
+        existing_feedback = existing_feedback.scalar_one_or_none()
+
+        if data.startswith("meeting_no"):
+            if existing_feedback:
+                # Если отзыв с ответом "нет" уже существует, уведомляем пользователя
+                if existing_feedback.did_meet is False:
+                    await callback.message.answer("Ты уже оставил отзыв с ответом 'нет' для этой встречи.")
+                    return
+                if existing_feedback.did_meet is True:
+                    await callback.message.answer("Ты уже оставил отзыв с ответом 'да' для этой встречи и не можешь поменять на 'нет'.")
+                    return
+                else:
+                    # Если отзыв с ответом "да" существует, обновляем его
+                    existing_feedback.did_meet = False
+                    existing_feedback.comment = None  # Очищаем комментарий, если был
+                    await session.commit()
+
+            else:
+                # Если отзыва нет, создаём новый
+                feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=False)
+                session.add(feedback)
+                await session.commit()
+
+            await callback.message.answer("Спасибо за информацию!")
+
+
+        elif data.startswith("meeting_yes"):
+            if existing_feedback:
+                if existing_feedback.did_meet is not True:
+                    existing_feedback.did_meet = True
+                    await session.commit()
+
+            else:
+                feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=True)
+                session.add(feedback)
+                await session.commit()
+
+            await callback.message.answer(
+                "Хочешь оставить комментарий?",
+                reply_markup=comment_question_kb(pair_id)
+
+            )
+
+
+# --- Ответ: Комментарий или нет ---
+@user_router.callback_query(F.data.startswith("leave_comment") | F.data.startswith("no_comment"))
+async def process_comment_choice(callback: types.CallbackQuery, state: FSMContext, session_maker):
+    await callback.answer()
+    data = callback.data
+    action, pair_id = data.split(":")
+
+    telegram_user_id = callback.from_user.id
+
+    async with session_maker() as session:
+        user = await session.execute(select(User).filter_by(telegram_id=telegram_user_id))
+        user = user.scalar_one_or_none()
+
+        if user is None:
+            await callback.message.answer("Пользователь не найден.")
+            return
+
+        user_id = user.id
+        pair_id = int(pair_id)
+
+        # Проверяем, существует ли уже отзыв без комментария
+        existing_feedback = await session.execute(
+            select(Feedback).filter_by(pair_id=pair_id, user_id=user_id)
+        )
+        existing_feedback = existing_feedback.scalar_one_or_none()
+
+        if action == "no_comment":
+            if existing_feedback:
+                # Если отзыв без комментария уже существует
+                await callback.message.answer("Спасибо! Отзыв учтён ✅")
+                return
+
+            feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=True, comment=None)
+            session.add(feedback)
+            await session.commit()
+
+            await state.clear()
+            await callback.message.answer("Спасибо! Отзыв учтён ✅")
+
+        else:
+            # Если выбран вариант с комментарием, запускаем ожидание ввода
+            await state.set_state(CommentStates.waiting_for_comment)
+            await state.update_data(pair_id=pair_id)
+            await callback.message.answer("Введи комментарий (или отправь /cancel, чтобы отменить)")
+#11111
+@user_router.callback_query(F.data.startswith("confirm_edit") | F.data.startswith("cancel_edit"))
+async def handle_edit_decision(callback: types.CallbackQuery, state: FSMContext, **kwargs):
+    await callback.answer()
+    data = callback.data
+    action, pair_id_str = data.split(":")
+    pair_id = int(pair_id_str)
+    session_maker = kwargs["session_maker"]
+    user_id = callback.from_user.id
+
+    if action == "cancel_edit":
+        await state.clear()
+        await callback.message.edit_reply_markup()
+        await callback.message.answer("Замена коментария отменена ✅")
+        return
+
+    # confirm_edit
+    state_data = await state.get_data()
+    temp_comment = state_data.get("temp_comment")
+    if not temp_comment:
+        await callback.message.answer("Ошибка: временный комментарий не найден.")
+        await state.clear()
+        return
+
+    status_msg = await save_comment(user_id, temp_comment, session_maker, pair_id, force_update=True)
+
+    await state.clear()
+
+    await callback.message.edit_reply_markup()
+    await callback.message.answer(status_msg)
+
+#--- Обработка /cancel ---
+@user_router.message(CommentStates.waiting_for_comment, F.text == "/cancel")
+async def cancel_feedback(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Действие отменено ❌")
+
+
+# --- Обработка комментария ---
+@user_router.message(CommentStates.waiting_for_comment, F.text)
+async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
+    session_maker = kwargs["session_maker"]
+    user_id = message.from_user.id
+    comment_text = message.text.strip()
+
+    button_texts = ['📋 Список участников',
+                    '👥 Управление участниками',
+                    '📊 Выгрузить в гугл таблицу',
+                    '🤝 Изменить интервал',
+                    '✏️ Изменить мои данные',
+                    '📊 Мой статус участия',
+                    '🗓️ Изменить частоту встреч',
+                    '⏸️ Приостановить участие',
+                    '❓ Как работает Random Coffee?',
+                    '▶️ Возобновить участие',
+                    ]
+
+    if comment_text in button_texts:
+        await message.answer("Пожалуйста, введи комментарий вручную, а не выбирай кнопку.")
+        return
+
+    data = await state.get_data()
+    pair_id = data.get("pair_id")
+    if pair_id is None:
+        await message.answer("Извини, произошла ошибка при записи комментария. Сообщи об этом админу.")
+        await state.clear()
+        return
+
+    async with session_maker() as session:
+        result_user = await session.execute(
+            select(User).where(User.telegram_id == user_id)
+        )
+        user = result_user.scalar()
+        if user is None:
+            await message.answer("Пользователь не найден.")
+            return
+
+        feedback_query = await session.execute(
+            select(Feedback).where(Feedback.user_id == user.id, Feedback.pair_id == pair_id)
+        )
+        existing_feedback = feedback_query.scalar()
+
+    if existing_feedback and existing_feedback.comment:
+        # Сохраняем временно комментарий и спрашиваем подтверждение
+        await state.update_data(temp_comment=comment_text)
+        await message.answer(
+            "Ты уже оставлял комментарий для этой встречи.\nХочешь изменить его?",
+            reply_markup=confirm_edit_comment_kb(pair_id)
+        )
+        return
+
+    # Иначе сохраняем
+    status_msg = await save_comment(user_id, comment_text, session_maker, pair_id)
+    await message.answer(status_msg)
+    await state.clear()
 
 
 @user_router.message(
@@ -510,7 +728,11 @@ async def process_set_or_change_interval(callback: CallbackQuery):
     try:
         async with AsyncSessionLocal() as session:
             if callback.data.startswith('new_interval:'):
-                _, new_interval = parse_callback_data(callback.data)
+                _, new_interval_str = parse_callback_data(callback.data)
+                try:
+                    new_interval = int(new_interval_str.strip())
+                except ValueError:
+                    new_interval = None
             else:
                 new_interval = None
 

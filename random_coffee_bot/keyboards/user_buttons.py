@@ -148,3 +148,23 @@ def yes_or_no_keyboard():
                               )]
     ])
     return keyboard
+
+  def meeting_question_kb(pair_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да", callback_data=f"meeting_yes:{pair_id}")],
+        [InlineKeyboardButton(text="❌ Нет", callback_data=f"meeting_no:{pair_id}")]
+    ])
+
+def comment_question_kb(pair_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✍️ Комментарий (оставить/изменить)", callback_data=f"leave_comment:{pair_id}")],
+        [InlineKeyboardButton(text="⏭️ Без комментария", callback_data=f"no_comment:{pair_id}")]
+    ])
+
+def confirm_edit_comment_kb(pair_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✏️ Да, изменить", callback_data=f"confirm_edit:{pair_id}"),
+            InlineKeyboardButton(text="❌ Нет, оставить", callback_data=f"cancel_edit:{pair_id}")
+        ]
+    ])

@@ -3,7 +3,7 @@ from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.enums import ChatType
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove, Update
+from aiogram.types import ReplyKeyboardRemove, Update
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.db import AsyncSessionLocal
@@ -15,6 +15,20 @@ logger = logging.getLogger(__name__)
 
 
 class AccessMiddleware(BaseMiddleware):
+    """
+    Проверяет, что апдейт пришел из приватного чата (другие игнорирует).
+    Если апдейт отправил админ (ID админа хранится в .env), то пропускает его
+    дальше в хэндлеры.
+    Если апдейт отправил не админ, то проверяет, что этот пользователь состоит
+    в корпоративной группе (ID группы хранится в .env). Если его там нет, то
+    отправляет ему сообщение, что бот недоступен для него.
+    Если пользователь есть в группе, то дальше идет проверка, есть ли он уже
+    в БД. Если нет, то пропускает сразу в хэндлеры. Если есть, то проверяет
+    значение флага has_permission у пользователя:
+    false - доступ запрещен,
+    отправляем сообщение об этом и предлагаем обратиться к админу;
+    true - пропускаем апдейт в хэндлеры.
+    """
     async def __call__(
         self,
         handler: Callable[[Update, Dict[str, Any]], Awaitable[Any]],
@@ -38,7 +52,7 @@ class AccessMiddleware(BaseMiddleware):
             logger.info('Это админ. Апдейт передан в хэндлеры.')
             return await handler(event, data)
 
-        logger.info('Проверяем состоит ли юзер в группе.')
+        logger.info(f'Проверяем состоит ли юзер {user.id} в группе.')
         bot = data['bot']
         group_tg_id = data.get('group_tg_id')
         try:

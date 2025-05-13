@@ -1,6 +1,6 @@
-from typing import Optional
 import logging
 import os
+from typing import Optional
 
 from dotenv import load_dotenv
 from google.oauth2 import service_account
@@ -24,6 +24,12 @@ async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int
                                   ) -> Optional[User]:
     '''Получает из БД экземпляр пользователя по его telegram_id.
     Если пользователь найден, возвращает его экземпляр. В ином случае - None'''
+    if not isinstance(telegram_id, int):
+        try:
+            telegram_id = int(telegram_id)
+        except ValueError:
+            logger.error('Телеграм ID юзера невозможно привести к числу.')
+            return None
     query = select(User).where(User.telegram_id == telegram_id)
     result = await session.execute(query)
     user = result.scalar_one_or_none()
