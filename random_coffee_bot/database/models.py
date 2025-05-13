@@ -21,7 +21,6 @@ class CommonMixin:
 class User(CommonMixin, Base):
     """Таблица пользователя."""
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False)
     username = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
@@ -32,7 +31,7 @@ class User(CommonMixin, Base):
     is_blocked = Column(Boolean, default=False, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
 
-    pairing_interval = Column(Integer, nullable=True)  # индивидуальный интервал (в днях)
+    pairing_interval = Column(Integer, nullable=True)
     last_paired_at = Column(Date, nullable=True)
     future_meeting = Column(Integer, default=1)
     pause_until = Column(Date, nullable=True)
@@ -48,6 +47,11 @@ class User(CommonMixin, Base):
         foreign_keys="Pair.user2_id",
         back_populates="user2"
     )
+    pairs_as_user3 = relationship(
+        "Pair",
+        foreign_keys="Pair.user3_id",
+        back_populates="user3"
+    )
 
     feedbacks = relationship("Feedback", back_populates="user")
 
@@ -59,7 +63,6 @@ class Pair(CommonMixin, Base):
     user2_id = Column(Integer, ForeignKey('user.id'), nullable=False)
     user3_id = Column(Integer, ForeignKey('user.id'), nullable=True)
 
-
     feedback_sent = Column(Boolean, default=False)
     paired_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -68,6 +71,9 @@ class Pair(CommonMixin, Base):
     )
     user2 = relationship(
         "User", foreign_keys=[user2_id], back_populates="pairs_as_user2"
+    )
+    user3 = relationship(
+        "User", foreign_keys=[user3_id], back_populates="pairs_as_user3"
     )
 
     feedbacks = relationship(
@@ -96,5 +102,12 @@ class Setting(Base):
     id = Column(Integer, primary_key=True)
     key = Column(String, unique=True, nullable=False, default="global_interval")
     value = Column(Integer, nullable=False, default=2)
-    first_matching_date = Column(DateTime, default=datetime(2025, 4, 1, 0, 0))
+    first_matching_date = Column(DateTime, default=datetime(2025, 5, 15, 10, 0))
 
+
+class Notification(CommonMixin, Base):
+    """Таблица для текстов рассылки от админа."""
+
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at = Column(DateTime, nullable=True)

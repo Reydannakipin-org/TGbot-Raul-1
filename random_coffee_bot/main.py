@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from config import Config, load_config
 from handlers.admin_handlers import admin_router
+from handlers.common_handler import common_router
 from handlers.users_handlers import user_router
 from middlewares import AccessMiddleware
 from globals import job_context
@@ -44,12 +45,12 @@ async def main():
     dp.update.middleware(AccessMiddleware())
     dp.include_router(admin_router)
     dp.include_router(user_router)
+    dp.include_router(common_router)
 
     await schedule_feedback_jobs(session_maker)
+
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-

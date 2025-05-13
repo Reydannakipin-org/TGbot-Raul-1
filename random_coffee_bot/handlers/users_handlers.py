@@ -14,30 +14,46 @@ from aiogram.types import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
 
+# Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
 from database.models import User, Pair, Feedback
+from bot import CommentStates, save_comment
+from services.user_service import (
+    create_user,
+    delete_user,
+    get_user_by_telegram_id,
+    set_user_active,
+    update_user_field,
+    create_text_with_interval,
+    set_new_global_interval,
+    parse_callback_data,
+    set_new_user_interval,
+    create_text_with_default_interval,
+    create_text_status_active,
+    create_text_random_coffee,
+)
+
+# Импорт фильтров и состояний
 from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
-from services.user_service import (create_user,
-                                   delete_user,
-                                   get_user_by_telegram_id,
-                                   set_user_active,
-                                   update_user_field)
-from texts import TEXTS
-from bot import save_comment
+from states.user_states import FSMUserForm
+
+# Импорт текстов и клавиатур
+from texts import TEXTS, KEYBOARD_BUTTON_TEXTS, USER_TEXTS, ADMIN_TEXTS
 from keyboards.user_buttons import (
     create_active_user_keyboard,
     create_activate_keyboard,
     create_deactivate_keyboard,
     create_inactive_user_keyboard,
+    generate_inline_confirm_change_interval,
+    generate_inline_interval,
+    yes_or_no_keyboard,
     meeting_question_kb,
     comment_question_kb,
     confirm_edit_comment_kb
 )
 
-from random_coffee_bot.bot import CommentStates
-from random_coffee_bot.states.user_states import FSMUserForm
 
-from bot import  FeedbackStates
+NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:[-\s][A-Za-zА-Яа-яЁё]+)*$'
 
 
 logger = logging.getLogger(__name__)
@@ -79,14 +95,16 @@ async def process_start_command(message: Message, state: FSMContext):
                 if not user.is_active:
                     await set_user_active(session, user_telegram_id, True)
                     logger.info('Статус пользователя изменен на Активный.')
-                await message.answer(TEXTS['re_start'])
+                await message.answer(
+                    TEXTS['re_start'],
+                    reply_markup=create_active_user_keyboard())
     except SQLAlchemyError as e:
         logger.exception('Ошибка при работе с базой данных: %s', str(e))
         await message.answer(TEXTS['db_error'])
 
 
 @user_router.message(StateFilter(FSMUserForm.waiting_for_first_name),
-                     F.text.isalpha())
+                     F.text.regexp(NAME_PATTERN))
 async def process_first_name_sending(message: Message, state: FSMContext):
     '''
     Хэндлер срабатывает в состоянии, когда мы ждем от пользователя его имя,
@@ -129,7 +147,7 @@ async def warning_not_first_name(message: Message, state: FSMContext):
 
 
 @user_router.message(StateFilter(FSMUserForm.waiting_for_last_name),
-                     F.text.isalpha())
+                     F.text.regexp(NAME_PATTERN))
 async def process_last_name_sending(message: Message, state: FSMContext):
     '''
     Хэндлер срабатывает в состоянии, когда мы ждем от пользователя
@@ -278,11 +296,15 @@ async def process_user(message: Message):
 
 
 @user_router.message(
-    lambda message: message.text == "⏸️ Приостановить участие",
+    F.text == KEYBOARD_BUTTON_TEXTS[
+        'button_stop_participation'
+    ],
     StateFilter(default_state)
 )
 async def pause_participation(message: Message, state: FSMContext):
-    """Хэндлер для приостановки участия пользователя."""
+    """
+    Хэндлер для приостановки участия пользователя.
+    """
     if message.from_user is None:
         return await message.answer(TEXTS['error_access'])
     telegram_id = message.from_user.id
@@ -299,18 +321,23 @@ async def pause_participation(message: Message, state: FSMContext):
 
     if user.is_active:
         await message.answer(
-            "Вы точно хотите приостановить участие?",
+            "Ты точно хочешь приостановить участие?",
             reply_markup=create_deactivate_keyboard()
         )
     else:
-        await message.answer("Вы уже неактивны.")
+        await message.answer("Ты уже неактивен(-на).",
+                             reply_markup=create_inactive_user_keyboard())
 
 
-@user_router.message(lambda message: message.text == "▶️ Возобновить участие",
-                     StateFilter(default_state)
-                     )
+@user_router.message(F.text == KEYBOARD_BUTTON_TEXTS[
+    'button_resume_participation'
+    ],
+    StateFilter(default_state)
+)
 async def resume_participation(message: Message, state: FSMContext):
-    """Хэндлер для возобновления участия пользователя."""
+    """
+    Хэндлер для возобновления участия пользователя.
+    """
     telegram_id = message.from_user.id
 
     async with AsyncSessionLocal() as session:
@@ -318,11 +345,12 @@ async def resume_participation(message: Message, state: FSMContext):
 
     if user and not user.is_active:
         await message.answer(
-            "Вы точно хотите возобновить участие?",
+            "Ты точно хочешь возобновить участие?",
             reply_markup=create_activate_keyboard()
         )
     else:
-        await message.answer("Вы уже активны.")
+        await message.answer("Ты уже активен(-на).",
+                             reply_markup=create_active_user_keyboard())
 
 
 @user_router.callback_query(lambda c: c.data.startswith("confirm_deactivate_"),
@@ -347,18 +375,18 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
                 if user.is_active:
                     await set_user_active(session, telegram_id, False)
                     await callback_query.message.answer(
-                        'Вы приостановили участие',
+                        'Ты приостановил(-а) участие',
                         reply_markup=create_inactive_user_keyboard()
                     )
                 else:
                     await callback_query.answer(
-                        "Вы уже приостановили участие.",
+                        "Ты уже приостановил(-а) участие.",
                         show_alert=True
                     )
 
             elif callback_query.data == "confirm_deactivate_no":
                 await callback_query.answer(
-                    'Вы решили не изменять статус участия',
+                    'Ты решил(-а) не изменять статус участия',
                     show_alert=True
                 )
 
@@ -367,7 +395,7 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
         except Exception as e:
             print(f"Произошла ошибка: {e}")
             await callback_query.answer(
-                "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
+                "Произошла ошибка. Пожалуйста, попробуй еще раз.",
                 show_alert=True
             )
 
@@ -396,18 +424,18 @@ async def process_activate_confirmation(callback_query: CallbackQuery):
                 if not user.is_active:
                     await set_user_active(session, telegram_id, True)
                     await callback_query.message.answer(
-                        'Вы возобновили участие',
+                        'Ты возобновил(-а) участие',
                         reply_markup=create_active_user_keyboard()
                     )
                 else:
                     await callback_query.answer(
-                        "Вы уже активны.",
+                        "Ты уже активен(-на).",
                         show_alert=True
                     )
 
             elif callback_query.data == "confirm_activate_no":
                 await callback_query.answer(
-                    'Вы решили не изменять статус участия',
+                    'Ты решил(-а) не изменять статус участия',
                     show_alert=True
                 )
 
@@ -416,7 +444,7 @@ async def process_activate_confirmation(callback_query: CallbackQuery):
         except Exception as e:
             print(f"Произошла ошибка: {e}")
             await callback_query.answer(
-                "Произошла ошибка. Пожалуйста, попробуйте еще раз.",
+                "Произошла ошибка. Пожалуйста, попробуй еще раз.",
                 show_alert=True
             )
 
@@ -429,7 +457,6 @@ async def process_clean_keyboards(message: Message, state: FSMContext):
     '''
     await message.answer('Убираем клаву',
                          reply_markup=ReplyKeyboardRemove())
-
 
 
 # --- Ответ: Да/Нет встреча ---
@@ -639,7 +666,255 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
     await message.answer(status_msg)
     await state.clear()
 
+
+@user_router.message(
+    F.text == KEYBOARD_BUTTON_TEXTS['button_change_my_details'],
+    StateFilter(default_state)
+)
+async def update_full_name(message: Message):
+    '''
+    Хэндлер для обновления имени и фамилии пользователя.
+    '''
+    telegram_id = message.from_user.id
+
+    try:
+        async with AsyncSessionLocal() as session:
+            # Получаем текущее имя и фамилию пользователя
+            user = await get_user_by_telegram_id(session, telegram_id)
+
+            if user is None:
+                await message.answer("Пользователь не найден.")
+                return
+
+            # Форматируем сообщение с текущими данными
+            user_message = (
+                f"Твои текущие данные: \n"
+                f"Имя: {user.first_name} \n"
+                f"Фамилия: {user.last_name} \n\n"
+                "Ты уверен, что хочешь изменить их?"
+            )
+
+        # Отправляем сообщение пользователю
+        await message.answer(
+            user_message,
+            reply_markup=yes_or_no_keyboard()
+        )
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('change_my_details_yes'),
+    StateFilter(default_state)
+)
+async def update_full_name_yes(callback: CallbackQuery, state: FSMContext):
+    '''
+    Хэндлер для подтверждения изменения имени и фамилии.
+    '''
+    await callback.message.delete()
+    await callback.message.answer("Введи новое имя:")
+    await state.set_state(FSMUserForm.waiting_for_first_name)
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('change_my_details_no'),
+    StateFilter(default_state)
+)
+async def no_update(callback: CallbackQuery):
+    '''
+    Хэндлер для обработки отказа от обновления данных.
+    '''
+    await callback.message.delete()
+    await callback.message.answer(USER_TEXTS['no_update'])
+
+
+@user_router.message(
+    F.text == KEYBOARD_BUTTON_TEXTS['button_my_status'],
+    StateFilter(default_state))
+async def status_active(message: Message):
+    '''
+    Хэндлер для кнопки "Мой статус участия".
+    '''
+    user_id = message.from_user.id
+
+    try:
+        async with AsyncSessionLocal() as session:
+            status_message = await create_text_status_active(session, user_id)
+
+    except Exception as e:
+        logger.error(f'Ошибка при получении статуса пользователя: {e}')
+        await message.answer(ADMIN_TEXTS['db_error'])
+        return
+
+    try:
+        await message.answer(status_message)
+
+    except Exception as e:
+        logger.error(f'Ошибка при отправке сообщения пользователю: {e}')
+        await message.answer("Не удалось отправить статус. Попробуйте позже.")
+
+
+@user_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_edit_meetings'],
+                     StateFilter(default_state))
+async def process_frequency(message: Message):
+    try:
+        async with AsyncSessionLocal() as session:
+            user_id = message.from_user.id
+            data_text = await create_text_with_interval(
+                session, USER_TEXTS['user_confirm_changing_interval'], user_id
+            )
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+
+    try:
+        await message.answer(
+                text=data_text,
+                reply_markup=generate_inline_confirm_change_interval()
+            )
+    except Exception as e:
+        logger.error(f'Ошибка при отправке сообщения пользователю: {e}')
+        await message.answer("Не удалось отправить статус. Попробуйте позже.")
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('confirm_changing_interval'),
+    StateFilter(default_state)
+)
+async def handle_callback_query_yes(callback: CallbackQuery):
+    await callback.message.delete()
+    try:
+        async with AsyncSessionLocal() as session:
+            reply_markup = await generate_inline_interval(session)
+            await callback.message.answer(
+                USER_TEXTS['update_frequency'],
+                reply_markup=reply_markup
+            )
+
+    except SQLAlchemyError as e:
+        logger.error(f'Ошибка при работе с базой данных: {e}')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('new_interval:') or c.data.startswith(
+        'change_interval'
+    ),
+    StateFilter(default_state)
+)
+async def process_set_or_change_interval(callback: CallbackQuery):
+    '''
+    Хэндлер срабатывает на нажатие пользователем инлайн-кнопки
+    с выбором частоты встреч или установкой частоты встреч по умолчанию.
+    '''
+    user_id = callback.from_user.id
+
+    try:
+        async with AsyncSessionLocal() as session:
+            if callback.data.startswith('new_interval:'):
+                _, new_interval_str = parse_callback_data(callback.data)
+                try:
+                    new_interval = int(new_interval_str.strip())
+                except ValueError:
+                    new_interval = None
+            else:
+                new_interval = None
+
+            await set_new_user_interval(session, user_id, new_interval)
+
+            data_text = await create_text_with_interval(
+                session,
+                USER_TEXTS['success_new_interval'],
+                user_id
+            )
+
+    except ValueError as ve:
+        logger.error(f'Ошибка значения: {ve}')
+        await callback.answer(
+            "Произошла ошибка при обработке данных. "
+            "Пожалуйста, попробуйте еще раз."
+        )
+        return
+
+    except SQLAlchemyError as e:
+        logger.error(f'Ошибка при работе с базой данных: {e}')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+        return  # Завершаем выполнение функции после обработки ошибки
+
+    try:
+        # Отправляем сообщение пользователю
+        if isinstance(callback.message, Message):
+            await callback.message.edit_text(text=data_text)
+
+    except Exception as e:
+        logger.error(f'Ошибка при отправке сообщения пользователю: {e}')
+        await callback.answer("Не удалось обновить статус. Попробуйте позже.")
+
+
+@user_router.callback_query(
+    lambda c: c.data.startswith('cancel_changing_interval')
+)
+async def handle_callback_query_no(callback: CallbackQuery):
+    '''
+    Обрабатывает нажатие на инлайн кнопку 'нет'
+    во время изминения интервала встреч.
+    '''
+    try:
+        async with AsyncSessionLocal() as session:
+            user_id = callback.from_user.id
+            data_text = await create_text_with_default_interval(
+                session, USER_TEXTS['user_default_interval'], user_id
+            )
+        if isinstance(callback.message, Message):
+            await callback.message.edit_text(text=data_text)
+
+    except SQLAlchemyError as e:
+        logger.error(f'Ошибка при работе с базой данных: {e}')
+        await callback.answer(ADMIN_TEXTS['db_error'])
+
+
+@user_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_how_it_works'])
+async def text_random_coffee(message: Message):
+    '''
+    Выводит текст о том как работает Random_coffee
+    '''
+    async with AsyncSessionLocal() as session:
+        text = await create_text_random_coffee(session)
+        await message.answer(text)
+
+
+#Хэндлер для тестов нужно будет удалить
+@user_router.message(Command(commands='interval'))
+async def set_interval_command(message: Message):
+    try:
+        # Устанавливаем новый интервал (например, 2)
+        new_interval = 2  # Замените на нужный вам интервал
+
+        async with AsyncSessionLocal() as session:
+            await set_new_global_interval(session, new_interval)
+
+        await message.answer(
+            f"Глобальный интервал успешно изменен на {new_interval}."
+        )
+
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+    except Exception as e:
+        logger.exception('Произошла ошибка при изменении интервала')
+        await message.answer(f"Произошла ошибка: {str(e)}")
+
+
 @user_router.message(F.text)
 async def fallback_handler(message: Message):
+    '''
+    Этот хэндлер должен быть самым последним,
+    так как он улавливает любую команду которую не смогли уловить
+    другие хэндлеры.
+    '''
     await message.answer('Я не знаю такой команды. '
-                         'Пожалуйста, используй клавиатуру.')
+                         'Пожалуйста, используй меню. Если меню '
+                         'недоступно, отправь команду /start.')
