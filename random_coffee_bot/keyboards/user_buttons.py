@@ -149,7 +149,7 @@ def yes_or_no_keyboard():
     ])
     return keyboard
 
-  def meeting_question_kb(pair_id: int):
+def meeting_question_kb(pair_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Да", callback_data=f"meeting_yes:{pair_id}")],
         [InlineKeyboardButton(text="❌ Нет", callback_data=f"meeting_no:{pair_id}")]

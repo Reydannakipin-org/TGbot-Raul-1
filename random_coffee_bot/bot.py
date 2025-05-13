@@ -221,10 +221,10 @@ async def notify_users_about_pairs(session: AsyncSession, pairs: list[Pair], bot
                 if partner and partner["telegram_id"]:
                     name = f'{partner["first_name"]} {partner["last_name"]}'.strip()
                     if partner['username']:
-                        link = (f'<a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
+                        link = (f'👥 <a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
                                 f'(если имя некликабельно, попробуй так: @{partner['username']})')
                     else:
-                        link = (f'<a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
+                        link = (f'👥 <a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
                                 f'(если имя некликабельно, это означает, что пользователь '
                                 'запретил его упоминать, но ты можешь найти его в нашей группе.)')
                     partner_links.append(link)
@@ -234,14 +234,14 @@ async def notify_users_about_pairs(session: AsyncSession, pairs: list[Pair], bot
             partners_str = ",\n".join(partner_links)
 
             message = (
-                f"Привет!\nНа этот раз тебе выпала возможность пообщаться с:\n"
+                f"Привет! 🤗\nНа этот раз тебе выпала возможность пообщаться с:\n"
                 f"{partners_str}\n\n"
                 f"Пожалуйста, свяжитесь друг с другом и договорись о встрече в любом удобном формате.\n\n"
                 f"Прекрасной рабочей недели!"
             )
 
             try:
-                logger.info(f'Отправляем сообщение: {message}')
+                logger.debug(f'Отправляем сообщение: {message}')
                 await bot.send_message(chat_id=user_info["telegram_id"], text=message, parse_mode="HTML")
                 await asyncio.sleep(0.05)
             except Exception as e:
@@ -307,12 +307,12 @@ async def save_comment(
 
 # отображение для консоли его в проде не будет
 def show_next_runs(scheduler: AsyncIOScheduler):
-    logger.info("🔔 Расписание ближайших запусков задач:")
+    logger.debug("🔔 Расписание ближайших запусков задач:")
 
     for job in scheduler.get_jobs():
         next_run_utc = job.next_run_time
         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-        logger.info(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M:%S') if next_run_msk else 'нет запланированного запуска'}")
+        logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M:%S') if next_run_msk else 'нет запланированного запуска'}")
 
 
 def get_next_pairing_date() -> str | None:
@@ -326,7 +326,7 @@ def get_next_pairing_date() -> str | None:
         next_run_utc = job.next_run_time
         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
         next_run_str = next_run_msk.strftime('%Y-%m-%d %H:%M:%S по МСК')
-        logger.info(f"🛠 Задача '{job.id}' запустится: {next_run_str}")
+        logger.debug(f"🛠 Задача '{job.id}' запустится: {next_run_str}")
         return next_run_str
     return None
 
@@ -377,7 +377,7 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
         await session.commit()
 
 async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing):
-    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(minutes=3) # Таня - вернуть дни
+    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)
     return start_date_for_feedback_dispatcher
 
 async def schedule_feedback_jobs(session_maker):
@@ -408,7 +408,7 @@ async def schedule_feedback_jobs(session_maker):
         if job:
             current_interval_from_job = job.trigger.interval.total_seconds() // 86400
             if int(current_interval_from_job) == interval_days:
-                logger.info(f"✅ '{job_id}' уже запланирована с тем же интервалом.")
+                logger.debug(f"✅ '{job_id}' уже запланирована с тем же интервалом.")
                 return
             else:
                 logger.info(
@@ -419,12 +419,12 @@ async def schedule_feedback_jobs(session_maker):
 
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(minutes=interval_days, start_date=effective_start), # Таня - вернуть дни
+            trigger=IntervalTrigger(days=interval_days, start_date=effective_start),
             id=job_id,
             replace_existing=True,
             misfire_grace_time=172800,  # 2 дня
         )
-        logger.info(f"🆕 '{job_id}' пересоздана. Старт: {effective_start}")
+        logger.debug(f"🆕 '{job_id}' пересоздана. Старт: {effective_start}")
 
         # # 👉 Ручной запуск, если задача должна была уже отработать
         # time_since_start = (now - effective_start).total_seconds()
@@ -463,4 +463,4 @@ async def reload_scheduled_jobs(session_maker):
         # Перезапускаем задачи с новым интервалом
         await schedule_feedback_jobs(session_maker)
     else:
-        logger.info("✅ Интервал не изменился. Задачи остаются с прежним интервалом.")
+        logger.debug("✅ Интервал не изменился. Задачи остаются с прежним интервалом.")

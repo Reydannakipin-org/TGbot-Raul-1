@@ -73,7 +73,7 @@ async def process_start_command(message: Message, state: FSMContext):
     Хэндлер для команды /start. Регистрирует нового пользователя.
     Если поль-ль уже существует, обновляет его статус is_active = True.
     '''
-    logger.info('Вошли в хэндлер, обрабатывающий команду /start')
+    logger.debug('Вошли в хэндлер, обрабатывающий команду /start')
     if message.from_user is None:
         return await message.answer(TEXTS['error_access'])
 
@@ -84,13 +84,13 @@ async def process_start_command(message: Message, state: FSMContext):
             user = await get_user_by_telegram_id(session, user_telegram_id)
 
             if user is None:
-                logger.info('Пользователя нет в БД. Приступаем к добавлению.')
+                logger.debug('Пользователя нет в БД. Приступаем к добавлению.')
                 user = await create_user(session,
                                          user_telegram_id,
                                          message.from_user.username,
                                          message.from_user.first_name,
                                          message.from_user.last_name)
-                logger.info(f'Пользователь добавлен в БД. '
+                logger.debug(f'Пользователь добавлен в БД. '
                             f'Имя {user.first_name}. Фамилия {user.last_name}')
                 await message.answer(TEXTS['start'])
                 await message.answer(TEXTS['ask_first_name'])
@@ -98,12 +98,12 @@ async def process_start_command(message: Message, state: FSMContext):
             else:
                 if not user.is_active:
                     await set_user_active(session, user_telegram_id, True)
-                    logger.info('Статус пользователя изменен на Активный.')
+                    logger.debug('Статус пользователя изменен на Активный.')
                 await message.answer(
                     TEXTS['re_start'],
                     reply_markup=create_active_user_keyboard())
     except SQLAlchemyError as e:
-        logger.exception('Ошибка при работе с базой данных: %s', str(e))
+        logger.error('Ошибка при работе с базой данных: %s', str(e))
         await message.answer(TEXTS['db_error'])
 
 
@@ -119,7 +119,7 @@ async def process_first_name_sending(message: Message, state: FSMContext):
     user_telegram_id = message.from_user.id
 
     first_name = message.text.strip()
-    logger.info(f'Получено сообщение в качестве имени: {first_name}')
+    logger.debug(f'Получено сообщение в качестве имени: {first_name}')
 
     try:
         async with AsyncSessionLocal() as session:
@@ -131,12 +131,12 @@ async def process_first_name_sending(message: Message, state: FSMContext):
                 await message.answer(TEXTS['error_find_user'])
                 return await state.clear()
 
-            logger.info('Имя сохранено.')
+            logger.debug('Имя сохранено.')
 
         await message.answer(TEXTS['ask_last_name'])
         await state.set_state(FSMUserForm.waiting_for_last_name)
     except SQLAlchemyError:
-        logger.exception('Ошибка при сохранении имени')
+        logger.error('Ошибка при сохранении имени')
         await message.answer(TEXTS['db_error'])
 
 
@@ -146,7 +146,7 @@ async def warning_not_first_name(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от пользователя его имя,
     и оно введено неверно. Просим пользователя ввести заново.
     '''
-    logger.info(f'Отказ. Получено сообщение в качестве имени: {message.text}')
+    logger.debug(f'Отказ. Получено сообщение в качестве имени: {message.text}')
     await message.answer(TEXTS['not_first_name'])
 
 
@@ -162,7 +162,7 @@ async def process_last_name_sending(message: Message, state: FSMContext):
     user_telegram_id = message.from_user.id
 
     last_name = message.text.strip()
-    logger.info(f'Получено сообщение в качестве фамилии: {last_name}')
+    logger.debug(f'Получено сообщение в качестве фамилии: {last_name}')
 
     try:
         async with AsyncSessionLocal() as session:
@@ -174,7 +174,7 @@ async def process_last_name_sending(message: Message, state: FSMContext):
                 await message.answer(TEXTS['error_find_user'])
                 return await state.clear()
 
-            logger.info('Фамилия сохранена')
+            logger.debug('Фамилия сохранена')
 
         keyboard = create_active_user_keyboard()
 
@@ -183,7 +183,7 @@ async def process_last_name_sending(message: Message, state: FSMContext):
         )
         await state.clear()
     except SQLAlchemyError:
-        logger.exception('Ошибка при сохранении фамилии')
+        logger.error('Ошибка при сохранении фамилии')
         await message.answer(TEXTS['db_error'])
 
 
@@ -193,7 +193,7 @@ async def warning_not_last_name(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от пользователя его фамилию,
     и она введена неверно. Просим пользователя ввести заново.
     '''
-    logger.info(
+    logger.debug(
         f'Отказ. Получено сообщение в качестве фамилии: {message.text}'
     )
     await message.answer(TEXTS['not_last_name'])
@@ -217,7 +217,7 @@ async def pause_participation(message: Message, state: FSMContext):
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, telegram_id)
     except SQLAlchemyError:
-        logger.exception("Ошибка при запросе пользователя для паузы участия.")
+        logger.error("Ошибка при запросе пользователя для паузы участия.")
         return await message.answer(TEXTS['db_error'])
 
     if user is None:
@@ -297,7 +297,7 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
             await callback_query.answer()
 
         except Exception as e:
-            print(f"Произошла ошибка: {e}")
+            logger.error(f"Произошла ошибка: {e}")
             await callback_query.answer(
                 USER_TEXTS['error_occurred'],
                 show_alert=True
@@ -348,7 +348,7 @@ async def process_activate_confirmation(callback_query: CallbackQuery):
             await callback_query.answer()
 
         except Exception as e:
-            print(f"Произошла ошибка: {e}")
+            logger.error(f"Произошла ошибка: {e}")
             await callback_query.answer(
                 USER_TEXTS['error_occurred'],
                 show_alert=True
@@ -402,7 +402,7 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
                 session.add(feedback)
                 await session.commit()
 
-            await callback.message.answer("Спасибо за информацию!")
+            await callback.message.edit_text("Спасибо за информацию!")
 
 
         elif data.startswith("meeting_yes"):
@@ -416,7 +416,7 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
                 session.add(feedback)
                 await session.commit()
 
-            await callback.message.answer(
+            await callback.message.edit_text(
                 "Хочешь оставить комментарий?",
                 reply_markup=comment_question_kb(pair_id)
 
@@ -595,7 +595,7 @@ async def update_full_name(message: Message):
         )
 
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
 
@@ -675,7 +675,7 @@ async def process_frequency(message: Message):
                 )
 
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
     try:

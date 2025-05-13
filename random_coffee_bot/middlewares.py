@@ -35,24 +35,24 @@ class AccessMiddleware(BaseMiddleware):
         event: Update,  # type: ignore
         data: Dict[str, Any]
     ) -> Any:
-        logger.info('Старт мидлвэер диспетчера. Получен апдейт.')
+        logger.debug('Старт мидлвэер диспетчера. Получен апдейт.')
         chat = None
         if event.message:
             chat = event.message.chat
         elif event.callback_query:
             chat = event.callback_query.message.chat  # type: ignore
         if not chat or chat.type != ChatType.PRIVATE:
-            logger.info('Апдейт не из приватного чата. Игнорируем')
+            logger.debug('Апдейт не из приватного чата. Игнорируем')
             return
 
-        logger.info('Апдейт из приватного чата. Проверяем админ ли это.')
+        logger.debug('Апдейт из приватного чата. Проверяем админ ли это.')
         user = data['event_from_user']
         admin_id = data.get('admin_id', 0)
         if user.id == admin_id:
-            logger.info('Это админ. Апдейт передан в хэндлеры.')
+            logger.debug('Это админ. Апдейт передан в хэндлеры.')
             return await handler(event, data)
 
-        logger.info(f'Проверяем состоит ли юзер {user.id} в группе.')
+        logger.debug(f'Проверяем состоит ли юзер {user.id} в группе.')
         bot = data['bot']
         group_tg_id = data.get('group_tg_id')
         try:
@@ -67,7 +67,7 @@ class AccessMiddleware(BaseMiddleware):
                                                       show_alert=True)
                 return
         except Exception as e:
-            logging.exception('Ошибка при проверке членства: %s', e)
+            logging.error('Ошибка при проверке членства: %s', e)
             if event.message:
                 await event.message.answer(TEXTS['error_access'])
             elif event.callback_query:
@@ -75,17 +75,17 @@ class AccessMiddleware(BaseMiddleware):
                                                   show_alert=True)
             return
 
-        logger.info('Юзер есть в группе. Проверяем, есть ли он в БД.')
+        logger.debug('Юзер есть в группе. Проверяем, есть ли он в БД.')
         try:
             async with AsyncSessionLocal() as session:
                 user_from_db = await get_user_by_telegram_id(session, user.id)
 
                 if user_from_db is None:
-                    logger.info(f'Юзера нет в БД. Апдейт передан в хэндлеры. '
-                                f'Юзер: {data['event_from_user']}')
+                    logger.debug(f'Юзера нет в БД. Апдейт передан в хэндлеры. '
+                                 f'Юзер: {data['event_from_user']}')
                     return await handler(event, data)
                 else:
-                    logger.info('Юзер есть в БД. Проверяем разрешение.')
+                    logger.debug('Юзер есть в БД. Проверяем разрешение.')
                     if not user_from_db.has_permission:
                         logger.info('У юзера нет разрешения. Отказ в доступе.')
                         if event.message:
@@ -97,13 +97,13 @@ class AccessMiddleware(BaseMiddleware):
                                 TEXTS['no_permission'], show_alert=True)
                         return
         except SQLAlchemyError:
-            logger.exception('Ошибка при работе с базой данных')
+            logger.error('Ошибка при работе с базой данных')
             if event.message:
                 await event.message.answer(TEXTS['db_error'])
             elif event.callback_query:
                 await event.callback_query.answer(TEXTS['db_error'],
                                                   show_alert=True)
             return
-        logger.info(f'У юзера есть разрешение. Апдейт передан в хэндлеры. '
+        logger.debug(f'У юзера есть разрешение. Апдейт передан в хэндлеры. '
                     f'Юзер: {data['event_from_user']}')
         return await handler(event, data)

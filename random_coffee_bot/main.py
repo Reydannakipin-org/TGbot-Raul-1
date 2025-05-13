@@ -1,5 +1,11 @@
-import asyncio
+import logging_config
+logging_config.setup_logging()
+
 import logging
+logger = logging.getLogger(__name__)
+
+
+import asyncio
 from datetime import datetime
 
 from bot import schedule_feedback_jobs
@@ -13,15 +19,8 @@ from middlewares import AccessMiddleware
 from globals import job_context
 from services.admin_service import set_first_pairing_date
 
-logger = logging.getLogger(__name__)
-
 
 async def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(filename)s:%(lineno)d #%(levelname)-8s '
-               '[%(asctime)s] - %(name)s - %(message)s')
-
     logger.info('Старт бота')
 
     # Из переменной config можно получить переменные окружения в текущем файле.
