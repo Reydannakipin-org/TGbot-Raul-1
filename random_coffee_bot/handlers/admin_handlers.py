@@ -630,83 +630,6 @@ async def process_cancel_changing_interval(callback: CallbackQuery):
     await callback.answer()
 
 
-# Служебная команда на время разработки
-@admin_router.message(Command(commands='contact'), StateFilter(default_state))
-async def process_contact_command(message: Message, bot: Bot):
-    from html import escape
-    from typing import List, Tuple
-    from aiogram.types import MessageEntity, User as TgUser
-
-    user_id = 7951238998
-    first_name = 'Гермиона'
-    last_name = 'Грейнджер'
-    text = (f'Вариант 1:\n\n'
-            f'<a href="https://t.me/@id{user_id}">{first_name} {last_name}</a>'
-            )
-    # text = (f'Вариант 1:\n\n'
-    #         f'<a href="https://t.me/@jenya_chirkova">{first_name} {last_name}</a>'
-    #         )
-    text2 = (f'Вариант 2:\n\n'
-             f'<a href="tg://user?id={user_id}">{first_name}</a>')
-
-    # await message.answer(text=text, parse_mode='HTML')
-    # await message.answer(text=text2, parse_mode='HTML')
-    await bot.send_message(227281400, text=text, parse_mode='HTML')
-    await bot.send_message(227281400, text=text2, parse_mode='HTML')
-
-    partners: List[Tuple[int, str, str]] = [(user_id, first_name, last_name),]
-    header = 'Вариант 3:\n\n'
-    footer = '\n\nСвяжитесь друг с другом и договоритесь о встрече!'
-
-    # 1) Собираем “голые” имена и сразу экранируем HTML
-    safe_names = [escape(f"{fn} {ln}".strip()) for _, fn, ln in partners]
-
-    # 2) Кладём их через двойной перенос строки
-    #    (iOS-клиент надёжнее подхватывает каждую ссылку, 
-    #     когда они отделены пустой строкой)
-    body = "\n\n".join(safe_names)
-    full_text = header + body + footer
-
-    # 3) Формируем text_link-сущности
-    entities: List[MessageEntity] = []
-    offset = len(header)  # начало первого имени
-
-    for (tg_id, _, _), name in zip(partners, safe_names):
-        length = len(name)
-        entities.append(
-            MessageEntity(
-                type="text_link",      # именно text_link
-                offset=offset,         # сдвиг до этого имени
-                length=length,
-                url=f"tg://user?id={tg_id}"
-            )
-        )
-        # сдвигаем на длину имени + 2 символа "\n\n"
-        offset += length + 2
-
-    logger.info(f'Отправлено сообщение: {full_text} c entities: {entities}')
-    # Отправляем одним сообщением с нужными entity
-    await bot.send_message(
-        chat_id=227281400,
-        text=full_text,
-        entities=entities
-    )
-
-    # user = TgUser(id=123456789, is_bot=False, first_name="Джинни", last_name="Уизли")
-    # mention = user.mention_html()
-
-    # text4 = (
-    #     'Новый вариант:\n\n'
-    #     f'{mention}\n\n'
-    #     'Свяжитесь и договоритесь о встрече!'
-    # )
-
-    # await bot.send_message(
-    #     chat_id=7951238998,
-    #     text=text4,
-    #     parse_mode="HTML",
-    # )
-
 @admin_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_google_sheets'],
                       StateFilter(default_state))
 async def process_export_to_gsheet(message: Message, google_sheet_id):
@@ -794,7 +717,6 @@ async def process_get_info(message: Message):
     await message.answer(data_text)
 
 
-
 @admin_router.message(Command(commands='cancel'),
                       FSMAdminPanel.waiting_for_text_of_notification)
 async def process_cancel_creating_notif(message: Message, state: FSMContext):
@@ -879,28 +801,6 @@ async def process_cancel_notif(callback: CallbackQuery):
     await callback.answer()
     if isinstance(callback.message, Message):
         await callback.message.edit_text(ADMIN_TEXTS['notif_is_canceled'])
-
-
-# Служебная команда на время разработки
-@admin_router.message(Command(commands='pair'))
-async def process_create_pair(message: Message):
-    user1_id = 4
-    user2_id = 2
-
-    try:
-        async with AsyncSessionLocal() as session:
-            pair = await adm.create_pair(session, user1_id, user2_id)
-
-            if pair is None:
-                logger.info('Не получилось создать пару')
-                await message.answer('Не получилось создать пару.')
-                return
-            else:
-                logger.info('Пара создана.')
-                await message.answer('Пара создана')
-    except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
-        await message.answer(ADMIN_TEXTS['db_error'])
 
 
 @admin_router.message(F.text)

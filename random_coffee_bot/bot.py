@@ -1,6 +1,5 @@
 import logging
 import os
-from html import escape
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger

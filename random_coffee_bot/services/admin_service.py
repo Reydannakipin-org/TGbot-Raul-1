@@ -193,15 +193,6 @@ async def set_new_global_interval(session: AsyncSession, new_value: int
         raise e
 
 
-# def get_next_pairing_date() -> Optional[date]:
-#     """
-#     Возвращает дату, когда состоится следующее формирование пар
-#     согласно планировщику задач.
-#     """
-#     # TODO
-#     return None
-
-
 async def fetch_all_users(session: AsyncSession) -> Sequence[User]:
     """
     Извлекает из БД всех пользователей, предварительно удалив устаревшие
