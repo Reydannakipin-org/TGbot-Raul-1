@@ -308,7 +308,7 @@ async def pause_participation(message: Message, state: FSMContext):
 
     if user.is_active:
         await message.answer(
-            "Ты точно хочешь приостановить участие?",
+            TEXTS['pause_participation'],
             reply_markup=create_deactivate_keyboard()
         )
     else:

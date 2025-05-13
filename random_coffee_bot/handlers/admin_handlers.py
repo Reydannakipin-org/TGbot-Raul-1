@@ -704,6 +704,34 @@ async def process_create_notification(message: Message, state: FSMContext):
     await state.set_state(FSMAdminPanel.waiting_for_text_of_notification)
 
 
+@admin_router.message(
+        F.text == KEYBOARD_BUTTON_TEXTS['button_info'],
+        StateFilter(default_state))
+async def process_get_info(message: Message):
+    try:
+        async with AsyncSessionLocal() as session:
+            current_interval = await adm.get_global_interval(session)
+            number_of_users, number_of_active_users = (
+                await adm.get_users_count(session))
+    except SQLAlchemyError:
+        logger.exception('Ошибка при работе с базой данных')
+        await message.answer(ADMIN_TEXTS['db_error'])
+
+    next_pairing_date = adm.get_next_pairing_date()
+
+    extra_data = {
+        'all_users': number_of_users,
+        'active_users': number_of_active_users
+    }
+
+    data_text = adm.create_text_with_interval(
+        ADMIN_TEXTS['info'],
+        current_interval, next_pairing_date, extra_data)
+
+    await message.answer(data_text)
+
+
+
 @admin_router.message(Command(commands='cancel'),
                       FSMAdminPanel.waiting_for_text_of_notification)
 async def process_cancel_creating_notif(message: Message, state: FSMContext):
@@ -793,7 +821,7 @@ async def process_cancel_notif(callback: CallbackQuery):
 # Служебная команда на время разработки
 @admin_router.message(Command(commands='pair'))
 async def process_create_pair(message: Message):
-    user1_id = 1
+    user1_id = 4
     user2_id = 2
 
     try:

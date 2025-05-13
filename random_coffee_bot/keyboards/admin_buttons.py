@@ -18,6 +18,9 @@ from texts import (INLINE_BUTTON_TEXTS,
 logger = logging.getLogger(__name__)
 
 
+button_info = KeyboardButton(
+    text=KEYBOARD_BUTTON_TEXTS['button_info']
+)
 button_list_participants = KeyboardButton(
     text=KEYBOARD_BUTTON_TEXTS['button_list_participants'])
 button_participant_management = KeyboardButton(
@@ -34,6 +37,7 @@ button_send_notification = KeyboardButton(
 buttons_kb_builder_admin = ReplyKeyboardBuilder()
 
 buttons_kb_builder_admin.row(
+    button_info,
     button_participant_management,
     button_google_sheets,
     button_change_interval,
