@@ -466,18 +466,20 @@ async def set_first_pairing_date(recieved_date: datetime):
             )
             current_interval = result.scalars().first()
 
-            if current_interval:
-                current_interval.first_matching_date = recieved_date
-            else:
+            if not current_interval:
                 current_interval = Setting(
                     key='global_interval',
                     value=2,
                     first_matching_date=recieved_date)
                 session.add(current_interval)
+                await session.commit()
+            elif (current_interval.first_matching_date and
+                  current_interval.first_matching_date < recieved_date):
+                current_interval.first_matching_date = recieved_date
+                await session.commit()
 
-            await session.commit()
-            logger.info(f'Установленный интервал {current_interval.value}')
-            return current_interval.value
+            logger.info(f'Установленный интервал: {current_interval.value}\n'
+                        f'Записанная дата в БД: {current_interval.first_matching_date} (МСК-3)')
     except SQLAlchemyError as e:
         await session.rollback()
-        logger.exception(f'Ошибка при установке интервала и даты: {e}')
+        logger.error(f'Ошибка при установке интервала и даты: {e}')

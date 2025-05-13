@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 import asyncio
 from datetime import datetime
 
-from bot import schedule_feedback_jobs
+from bot import scheduler, schedule_feedback_jobs
 from aiogram import Bot, Dispatcher
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from config import Config, load_config
@@ -49,7 +49,10 @@ async def main():
     dp.include_router(user_router)
     dp.include_router(common_router)
 
-    # await set_first_pairing_date(datetime(2025, 5, 13, 10, 30))
+    #  На случай, если нужно будет запланировать все задачи с чистого листа.
+    # scheduler.start()
+    # scheduler.remove_all_jobs()
+    await set_first_pairing_date(datetime(2025, 5, 15, 7, 00))
     await schedule_feedback_jobs(session_maker)
 
     await dp.start_polling(bot)
