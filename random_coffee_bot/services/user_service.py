@@ -185,7 +185,9 @@ async def create_text_with_default_interval(
     return data_text
 
 
-async def create_text_for_select_an_interval(session: AsyncSession, text: str) -> str:
+async def create_text_for_select_an_interval(
+    session: AsyncSession, text: str
+) -> str:
     '''
     Создает текст для выбора интервала встреч.
     '''
@@ -328,32 +330,6 @@ def upload_to_drive(file_path, file_name):
     except Exception as e:
         print(f"Ошибка при загрузке файла: {e}")
         return None
-
-
-# #Временно нужно будет удалить
-# async def set_new_global_interval(session: AsyncSession, new_value: int
-#                                   ) -> None:
-#     '''
-#     Изменяет значение глобального интервала в таблице settings.
-#     Возвращает True, если интервал обновлен.
-#     '''
-#     try:
-#         result = await session.execute(
-#             select(Setting).where(Setting.key == 'global_interval')
-#         )
-#         setting = result.scalars().first()
-
-#         if setting:
-#             setting.value = new_value
-#         else:
-#             setting = Setting(key='global_interval', value=new_value)
-#             session.add(setting)
-
-#         await session.commit()
-#     except SQLAlchemyError as e:
-#         await session.rollback()
-#         logger.exception('Ошибка при установке нового интервала')
-#         raise e
 
 
 def parse_callback_data(data: str) -> tuple[str, str]:
