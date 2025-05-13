@@ -14,6 +14,7 @@ from gspread.exceptions import (
 from oauth2client.client import HttpAccessTokenRefreshError
 from sqlalchemy.exc import SQLAlchemyError
 
+from bot import get_next_pairing_date
 from database.db import AsyncSessionLocal
 from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
 from keyboards.admin_buttons import (buttons_kb_admin,
@@ -96,7 +97,7 @@ async def process_find_user_by_telegram_id(message: Message,
     ikb_participant_management = generate_inline_manage(
         user_telegram_id, user.has_permission)
     await message.answer(data_text,
-                            reply_markup=ikb_participant_management)
+                        reply_markup=ikb_participant_management)
     await state.clear()
 
 
@@ -543,7 +544,7 @@ async def process_button_change_interval(message: Message):
         logger.exception('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = adm.get_next_pairing_date()
+    next_pairing_date = get_next_pairing_date()
 
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['confirm_changing_interval'],
@@ -572,7 +573,7 @@ async def process_choose_new_interval(callback: CallbackQuery):
 
 
 @admin_router.callback_query(
-        lambda c: c.data.startswith('new_interval:'),
+        lambda c: c.data.startswith('new_global_interval:'),
         StateFilter(default_state))
 async def process_set_new_interval(callback: CallbackQuery):
     """
@@ -594,7 +595,7 @@ async def process_set_new_interval(callback: CallbackQuery):
         logger.exception('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = adm.get_next_pairing_date()
+    next_pairing_date = get_next_pairing_date()
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['success_new_interval'],
         current_interval, next_pairing_date)
@@ -619,7 +620,7 @@ async def process_cancel_changing_interval(callback: CallbackQuery):
         logger.exception('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = adm.get_next_pairing_date()
+    next_pairing_date = get_next_pairing_date()
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['cancel_changing_interval'],
         current_interval, next_pairing_date)
@@ -627,22 +628,6 @@ async def process_cancel_changing_interval(callback: CallbackQuery):
     if isinstance(callback.message, Message):
         await callback.message.edit_text(text=data_text)
     await callback.answer()
-
-
-# Служебная команда на время разработки
-@admin_router.message(Command(commands='contact'), StateFilter(default_state))
-async def process_contact_command(message: Message, bot: Bot):
-    user_id = 7951238998
-    first_name = 'Татьяна'
-    last_name = 'Д.'
-    text = (f'Контакт твоего коллеги: '
-            f'<a href="https://t.me/@id{user_id}">{first_name} {last_name}</a>'
-            )
-    text2 = (f'<a href="tg://user?id={user_id}">{first_name}</a>')
-
-    await message.answer(text=text, parse_mode='HTML')
-    await message.answer(text=text2, parse_mode='HTML')
-    await bot.send_message(7951238998, 'Тестовое сообщение')
 
 
 @admin_router.message(F.text == KEYBOARD_BUTTON_TEXTS['button_google_sheets'],
@@ -718,7 +703,7 @@ async def process_get_info(message: Message):
         logger.exception('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = adm.get_next_pairing_date()
+    next_pairing_date = get_next_pairing_date()
 
     extra_data = {
         'all_users': number_of_users,
@@ -730,7 +715,6 @@ async def process_get_info(message: Message):
         current_interval, next_pairing_date, extra_data)
 
     await message.answer(data_text)
-
 
 
 @admin_router.message(Command(commands='cancel'),
@@ -817,28 +801,6 @@ async def process_cancel_notif(callback: CallbackQuery):
     await callback.answer()
     if isinstance(callback.message, Message):
         await callback.message.edit_text(ADMIN_TEXTS['notif_is_canceled'])
-
-
-# Служебная команда на время разработки
-@admin_router.message(Command(commands='pair'))
-async def process_create_pair(message: Message):
-    user1_id = 4
-    user2_id = 2
-
-    try:
-        async with AsyncSessionLocal() as session:
-            pair = await adm.create_pair(session, user1_id, user2_id)
-
-            if pair is None:
-                logger.info('Не получилось создать пару')
-                await message.answer('Не получилось создать пару.')
-                return
-            else:
-                logger.info('Пара создана.')
-                await message.answer('Пара создана')
-    except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
-        await message.answer(ADMIN_TEXTS['db_error'])
 
 
 @admin_router.message(F.text)

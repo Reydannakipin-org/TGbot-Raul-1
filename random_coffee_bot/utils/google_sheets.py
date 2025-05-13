@@ -9,7 +9,7 @@ config = load_config()
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
 creds = ServiceAccountCredentials.from_json_keyfile_name(
-    'credentials.json', scopes=SCOPES
+    'random_coffee_bot/credentials.json', scopes=SCOPES
 )
 gc = gspread.authorize(creds)
 

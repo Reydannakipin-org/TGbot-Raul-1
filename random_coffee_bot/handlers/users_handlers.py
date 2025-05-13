@@ -464,7 +464,8 @@ async def process_clean_keyboards(message: Message, state: FSMContext):
 async def process_meeting_feedback(callback: types.CallbackQuery, session_maker):
     await callback.answer()
     data = callback.data
-    pair_id = data.split(":")[1] if ":" in data else None
+    _, pair_id_str = parse_callback_data(callback.data)
+    pair_id = int(pair_id_str)
 
     telegram_user_id = callback.from_user.id
 
