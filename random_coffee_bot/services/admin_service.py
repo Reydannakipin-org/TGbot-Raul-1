@@ -5,7 +5,7 @@ from typing import Optional, Sequence
 import asyncio
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
@@ -86,9 +86,26 @@ def format_text_about_user(template: str,   user: User,
     return template.format(**data)
 
 
-def create_text_with_interval(text: str,
+async def get_users_count(session: AsyncSession) -> tuple[int, int]:
+    """
+    Возвращает общее количество юзеров и количество активных.
+    """
+    result1 = await session.execute(
+        select(func.count(User.id))
+    )
+    number_of_users = result1.scalar_one()
+    result2 = await session.execute(
+        select(func.count(User.id))
+        .where(User.is_active.is_(True))
+    )
+    number_of_active_users = result2.scalar_one()
+    return number_of_users, number_of_active_users
+
+
+def create_text_with_interval(template: str,
                               current_interval: Optional[int],
-                              next_pairing_date: Optional[date]) -> str:
+                              next_pairing_date: Optional[date],
+                              extra_fields: Optional[dict[str, str]]) -> str:
     """
     Подставляет значения для переменных interval и next_pairing_date
     в полученном тексте.
@@ -102,12 +119,17 @@ def create_text_with_interval(text: str,
     if next_pairing_date:
         date_text = next_pairing_date.strftime(DATE_FORMAT)
     else:
-        date_text = ADMIN_TEXTS['unknown']
+        # date_text = ADMIN_TEXTS['unknown']
+        date_text = '20.05.2025'
 
-    data_text = text.format(
-        interval=interval_text,
-        next_pairing_date=date_text)
-    return data_text
+    data = {
+        'interval': interval_text,
+        'next_pairing_date': date_text
+    }
+
+    if extra_fields:
+        data.update(extra_fields)
+    return template.format(**data)
 
 
 def is_valid_date(txt: str) -> bool:
