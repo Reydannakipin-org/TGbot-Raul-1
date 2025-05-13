@@ -97,6 +97,27 @@ def create_inactive_user_keyboard():
     return buttons_kb_builder_user.as_markup(resize_keyboard=True)
 
 
+def meeting_question_kb(pair_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да", callback_data=f"meeting_yes:{pair_id}")],
+        [InlineKeyboardButton(text="❌ Нет", callback_data=f"meeting_no:{pair_id}")]
+    ])
+
+def comment_question_kb(pair_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✍️ Комментарий (оставить/изменить)", callback_data=f"leave_comment:{pair_id}")],
+        [InlineKeyboardButton(text="⏭️ Без комментария", callback_data=f"no_comment:{pair_id}")]
+    ])
+
+def confirm_edit_comment_kb(pair_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✏️ Да, изменить", callback_data=f"confirm_edit:{pair_id}"),
+            InlineKeyboardButton(text="❌ Нет, оставить", callback_data=f"cancel_edit:{pair_id}")
+        ]
+    ])
+
+
 async def generate_inline_interval(session: AsyncSession):
     admin_interval = await get_global_interval(session)
     text = f'По умолчанию: 1 раз в {admin_interval} недели'

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+from pathlib import Path
 from environs import Env
 
 
@@ -30,7 +30,9 @@ class Config:
 
 def load_config(path: str | None = None) -> Config:
     env: Env = Env()
-    env.read_env(path)
+    # Указываем путь к .env внутри random_coffee_bot
+    default_path = Path(__file__).resolve().parent / '.env'
+    env.read_env(path or default_path)
 
     return Config(
         tg_bot=TgBot(

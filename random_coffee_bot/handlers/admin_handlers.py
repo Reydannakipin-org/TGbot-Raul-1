@@ -35,6 +35,7 @@ from texts import ADMIN_TEXTS, KEYBOARD_BUTTON_TEXTS
 
 logger = logging.getLogger(__name__)
 
+
 admin_router = Router()
 admin_router.message.filter(AdminMessageFilter())
 admin_router.callback_query.filter(AdminCallbackFilter())
