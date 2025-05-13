@@ -1,6 +1,10 @@
 from dataclasses import dataclass
-from pathlib import Path
 from environs import Env
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+
+MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
 
 # Этот класс используется, пока мы работаем с SQLite.
@@ -14,6 +18,7 @@ class TgBot:
     token: str
     admin_tg_id: int
     group_tg_id: int
+    admins_list: list
 
 
 @dataclass
@@ -38,7 +43,8 @@ def load_config(path: str | None = None) -> Config:
         tg_bot=TgBot(
             token=env('BOT_TOKEN'),
             admin_tg_id=env.int('ADMIN_TELEGRAM_ID'),
-            group_tg_id=env.int('TELEGRAM_ID_TEST_GROUP')
+            group_tg_id=env.int('TELEGRAM_ID_TEST_GROUP'),
+            admins_list=env.list('ADMIN_ID_LIST', subcast=int)
         ),
         db=DatabaseConfig(
             db_url=env('DATABASE_URL')

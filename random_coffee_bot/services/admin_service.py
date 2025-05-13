@@ -104,8 +104,9 @@ async def get_users_count(session: AsyncSession) -> tuple[int, int]:
 
 def create_text_with_interval(template: str,
                               current_interval: Optional[int],
-                              next_pairing_date: Optional[date],
-                              extra_fields: Optional[dict[str, str]]) -> str:
+                              next_pairing_date: str,
+                              extra_fields: Optional[dict[str, str]] = None
+                              ) -> str:
     """
     Подставляет значения для переменных interval и next_pairing_date
     в полученном тексте.
@@ -117,10 +118,9 @@ def create_text_with_interval(template: str,
                                            INTERVAL_TEXTS['default'])
 
     if next_pairing_date:
-        date_text = next_pairing_date.strftime(DATE_FORMAT)
+        date_text = next_pairing_date
     else:
-        # date_text = ADMIN_TEXTS['unknown']
-        date_text = '20.05.2025'
+        date_text = ADMIN_TEXTS['unknown']
 
     data = {
         'interval': interval_text,
@@ -193,13 +193,13 @@ async def set_new_global_interval(session: AsyncSession, new_value: int
         raise e
 
 
-def get_next_pairing_date() -> Optional[date]:
-    """
-    Возвращает дату, когда состоится следующее формирование пар
-    согласно планировщику задач.
-    """
-    # TODO
-    return None
+# def get_next_pairing_date() -> Optional[date]:
+#     """
+#     Возвращает дату, когда состоится следующее формирование пар
+#     согласно планировщику задач.
+#     """
+#     # TODO
+#     return None
 
 
 async def fetch_all_users(session: AsyncSession) -> Sequence[User]:
@@ -275,6 +275,7 @@ async def fetch_all_pairs(session: AsyncSession) -> Sequence[Pair]:
             .options(
                 selectinload(Pair.user1),
                 selectinload(Pair.user2),
+                selectinload(Pair.user3),
                 selectinload(Pair.feedbacks).selectinload(Feedback.user)
             ).order_by(Pair.paired_at.desc())
         )
@@ -464,3 +465,28 @@ async def reset_user_pause_until(session: AsyncSession, user: User) -> None:
             await session.rollback()
             logger.error('Ошибка при очистке pause_until '
                          f'для user_id={user.id}: {e}')
+
+
+async def set_first_pairing_date(recieved_date: datetime):
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Setting).where(Setting.key == 'global_interval')
+            )
+            current_interval = result.scalars().first()
+
+            if current_interval:
+                current_interval.first_matching_date = recieved_date
+            else:
+                current_interval = Setting(
+                    key='global_interval',
+                    value=2,
+                    first_matching_date=recieved_date)
+                session.add(current_interval)
+
+            await session.commit()
+            logger.info(f'Установленный интервал {current_interval.value}')
+            return current_interval.value
+    except SQLAlchemyError as e:
+        await session.rollback()
+        logger.exception(f'Ошибка при установке интервала и даты: {e}')
