@@ -1,6 +1,11 @@
 import logging
+import os
 from typing import Optional
 
+from dotenv import load_dotenv
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +14,10 @@ from database.models import Setting, User
 from texts import ADMIN_TEXTS, INTERVAL_TEXTS, USER_TEXTS
 
 logger = logging.getLogger(__name__)
+
+folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+
+load_dotenv()
 
 
 async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int
@@ -182,6 +191,20 @@ async def create_text_with_default_interval(
     return data_text
 
 
+async def create_text_for_select_an_interval(
+    session: AsyncSession, text: str
+) -> str:
+    '''
+    Создает текст для выбора интервала встреч.
+    '''
+    admin_current_interval = await get_global_interval(session)
+
+    data_text = text.format(
+        their_interval=admin_current_interval
+    )
+    return data_text
+
+
 async def create_text_with_interval(
     session: AsyncSession, text: str, user_id: int
 ) -> str:
@@ -233,7 +256,7 @@ async def get_global_interval(session: AsyncSession) -> Optional[int]:
 
 async def get_user_interval(
     session: AsyncSession, user_id: int
-) -> Optional[str]:  # Изменено на Optional[str]
+) -> Optional[str]:
     '''
     Возвращает из базы данных значение интервала которое поставил пользователь.
     '''
@@ -286,30 +309,33 @@ async def set_new_user_interval(
         raise e
 
 
-#Временно нужно будет удалить
-async def set_new_global_interval(session: AsyncSession, new_value: int
-                                  ) -> None:
+def upload_to_drive(file_path, file_name):
     '''
-    Изменяет значение глобального интервала в таблице settings.
-    Возвращает True, если интервал обновлен.
+    Функция для работы с отправкой фото на гугл диск.
     '''
+    SCOPES = ['https://www.googleapis.com/auth/drive']
+    SERVICE_ACCOUNT_FILE = 'random_coffee_bot/credentials.json'
+
+    credentials = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+
+    service = build('drive', 'v3', credentials=credentials)
+
+    file_metadata = {
+        'name': file_name,
+        'parents': [folder_id]
+    }
+
+    media = MediaFileUpload(file_path, mimetype='image/jpeg')
+
     try:
-        result = await session.execute(
-            select(Setting).where(Setting.key == 'global_interval')
-        )
-        setting = result.scalars().first()
-
-        if setting:
-            setting.value = new_value
-        else:
-            setting = Setting(key='global_interval', value=new_value)
-            session.add(setting)
-
-        await session.commit()
-    except SQLAlchemyError as e:
-        await session.rollback()
-        logger.exception('Ошибка при установке нового интервала')
-        raise e
+        file = service.files().create(
+            body=file_metadata, media_body=media, fields='id'
+        ).execute()
+        return file.get('id')
+    except Exception as e:
+        print(f"Ошибка при загрузке файла: {e}")
+        return None
 
 
 def parse_callback_data(data: str) -> tuple[str, str]:

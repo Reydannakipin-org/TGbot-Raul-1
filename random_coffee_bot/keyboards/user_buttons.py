@@ -1,12 +1,11 @@
 from aiogram.types import KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from sqlalchemy.ext.asyncio import AsyncSession
-from services.user_service import get_global_interval
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from texts import (KEYBOARD_BUTTON_TEXTS,
-                   INLINE_BUTTON_TEXTS,
-                   INTERVAL_TEXTS,
-                   )
+from texts import (
+    KEYBOARD_BUTTON_TEXTS,
+    INLINE_BUTTON_TEXTS,
+    INTERVAL_TEXTS,
+)
 
 button_change_my_details = KeyboardButton(
     text=KEYBOARD_BUTTON_TEXTS['button_change_my_details']
@@ -22,6 +21,9 @@ button_stop_participation = KeyboardButton(
 )
 button_how_it_works = KeyboardButton(
     text=KEYBOARD_BUTTON_TEXTS['button_how_it_works']
+)
+button_send_photo = KeyboardButton(
+    text=KEYBOARD_BUTTON_TEXTS['button_send_photo']
 )
 
 # Кнопки для неактивных пользователей
@@ -72,13 +74,16 @@ def generate_inline_confirm_change_interval():
     ])
 
 
-# Функция для создания клавиатуры для активных пользователей
 def create_active_user_keyboard():
+    '''
+    Функция для создания клавиатуры для активных пользователей.
+    '''
     buttons_kb_builder_user = ReplyKeyboardBuilder()
     buttons_kb_builder_user.row(
         button_change_my_details,
         button_my_status,
         button_edit_meetings,
+        button_send_photo,
         button_stop_participation,
         button_how_it_works,
         width=1
@@ -86,8 +91,10 @@ def create_active_user_keyboard():
     return buttons_kb_builder_user.as_markup(resize_keyboard=True)
 
 
-# Функция для создания клавиатуры для неактивных пользователей
 def create_inactive_user_keyboard():
+    '''
+    Функция для создания клавиатуры для неактивных пользователей.
+    '''
     buttons_kb_builder_user = ReplyKeyboardBuilder()
     buttons_kb_builder_user.row(
         button_resume_participation,
@@ -97,30 +104,11 @@ def create_inactive_user_keyboard():
     return buttons_kb_builder_user.as_markup(resize_keyboard=True)
 
 
-def meeting_question_kb(pair_id: int):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да", callback_data=f"meeting_yes:{pair_id}")],
-        [InlineKeyboardButton(text="❌ Нет", callback_data=f"meeting_no:{pair_id}")]
-    ])
-
-def comment_question_kb(pair_id: int):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✍️ Комментарий (оставить/изменить)", callback_data=f"leave_comment:{pair_id}")],
-        [InlineKeyboardButton(text="⏭️ Без комментария", callback_data=f"no_comment:{pair_id}")]
-    ])
-
-def confirm_edit_comment_kb(pair_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✏️ Да, изменить", callback_data=f"confirm_edit:{pair_id}"),
-            InlineKeyboardButton(text="❌ Нет, оставить", callback_data=f"cancel_edit:{pair_id}")
-        ]
-    ])
-
-
-async def generate_inline_interval(session: AsyncSession):
-    admin_interval = await get_global_interval(session)
-    text = f'По умолчанию: 1 раз в {admin_interval} недели'
+def generate_inline_interval():
+    '''
+    Инлайн-клавиатура для выбора интервала встреч.
+    '''
+    text = 'По умолчанию'
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -160,3 +148,23 @@ def yes_or_no_keyboard():
                               )]
     ])
     return keyboard
+
+  def meeting_question_kb(pair_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да", callback_data=f"meeting_yes:{pair_id}")],
+        [InlineKeyboardButton(text="❌ Нет", callback_data=f"meeting_no:{pair_id}")]
+    ])
+
+def comment_question_kb(pair_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✍️ Комментарий (оставить/изменить)", callback_data=f"leave_comment:{pair_id}")],
+        [InlineKeyboardButton(text="⏭️ Без комментария", callback_data=f"no_comment:{pair_id}")]
+    ])
+
+def confirm_edit_comment_kb(pair_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✏️ Да, изменить", callback_data=f"confirm_edit:{pair_id}"),
+            InlineKeyboardButton(text="❌ Нет, оставить", callback_data=f"cancel_edit:{pair_id}")
+        ]
+    ])
