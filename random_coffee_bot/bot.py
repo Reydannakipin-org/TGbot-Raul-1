@@ -43,10 +43,8 @@ scheduler = AsyncIOScheduler(
 
 current_interval = None
 
-
 class CommentStates(StatesGroup):
     waiting_for_comment = State()
-
 
 async def feedback_dispatcher_wrapper():
     bot, dispatcher, session_maker = job_context.get_context()
@@ -59,6 +57,7 @@ async def auto_pairing_wrapper():
 async def reload_scheduled_wrapper():
     _, _, session_maker = job_context.get_context()
     await reload_scheduled_jobs(session_maker)
+
 
 # ласт пара
 async def get_latest_pair_id_for_user(session: AsyncSession, user_id: int) -> int | None:
@@ -385,6 +384,7 @@ async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pair
     start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)
     return start_date_for_feedback_dispatcher
 
+
 async def schedule_feedback_jobs(session_maker):
     global current_interval
 
@@ -414,21 +414,26 @@ async def schedule_feedback_jobs(session_maker):
         job = scheduler.get_job(job_id)
         tz = ZoneInfo("Europe/Moscow")
         now = datetime.now(tz)
-
-        # Обработка стартовой даты
         effective_start = (start_date or now).astimezone(tz)
 
-        # Удалить задачу если интервал изменился
         if job:
-            current_interval = job.trigger.interval.total_seconds() // 60
-            if int(current_interval) != interval_minutes:
-                print(f"♻️ Интервал '{job_id}' изменился. Перезапускаем...")
-                scheduler.remove_job(job_id)
-                job = None
-            else:
-                print(f"✅ '{job_id}' уже запланирована.")
+            current_job_interval = job.trigger.interval.total_seconds() // 60
+            if int(current_job_interval) != interval_minutes:
+                next_run_time = job.next_run_time
+                if next_run_time:
+                    new_start_date = next_run_time + timedelta(minutes=int(interval_minutes))
+                else:
+                    new_start_date = effective_start
 
-        if not job:
+                scheduler.modify_job(
+                    job_id,
+                    trigger=IntervalTrigger(minutes=interval_minutes, start_date=new_start_date, timezone=tz)
+                )
+                print(
+                    f"🕒 '{job_id}' будет перезапущена с новым интервалом {interval_minutes} мин начиная с {new_start_date}")
+            else:
+                print(f"✅ '{job_id}' уже запланирована с интервалом {interval_minutes} мин.")
+        else:
             scheduler.add_job(
                 func,
                 trigger=IntervalTrigger(minutes=interval_minutes, start_date=effective_start, timezone=tz),
@@ -468,17 +473,22 @@ async def schedule_feedback_jobs(session_maker):
                 else:
                     print(f"⏭️ Пропущен запуск '{job_id}' более чем на 2 дня. Пропускаем.")
 
-
     start_date_for_auto_pairing = start_date
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, session_maker, start_date=start_date_for_auto_pairing)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, session_maker,
+                           start_date=start_date_for_auto_pairing)
 
-    start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing)
-    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, session_maker, start_date=start_date_for_feedback_dispatcher)
+    start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(
+        start_date_for_auto_pairing)
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, session_maker,
+                           start_date=start_date_for_feedback_dispatcher)
 
-    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, session_maker, start_date=start_date_for_auto_pairing)
+    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, session_maker,
+                           start_date=start_date_for_auto_pairing)
 
     show_next_runs(scheduler)
 
+
+# это исключение дублей
 async def check_if_already_processed(session, job_id: str, expected_run_time: datetime) -> bool:
     lower = expected_run_time.replace(second=0, microsecond=0)
     upper = lower + timedelta(minutes=1)
@@ -489,6 +499,7 @@ async def check_if_already_processed(session, job_id: str, expected_run_time: da
         return result.scalars().first() is not None
 
     return False
+
 
 async def reload_scheduled_jobs(session_maker):
     async with session_maker() as session:
