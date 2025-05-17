@@ -1,5 +1,5 @@
 import logging
-from apscheduler.util import astimezone
+import os
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -24,11 +24,11 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
-# DATABASE_URL = os.getenv("DATABASE_URL").replace("+asyncpg", "+psycopg2")
-
-# подлкючение для постгресса
+# load_dotenv()
+#
+# DATABASE_URL = os.getenv("DATABASE_URL").replace("+asyncpg", "+psycopg")
+#
+# # подлкючение для постгресса
 # scheduler = AsyncIOScheduler(
 #     jobstores={
 #         'default': SQLAlchemyJobStore(url=DATABASE_URL)
@@ -38,7 +38,7 @@ load_dotenv()
 # пусть пока тут будет когда будет постгрес тогда будет видно где лучше быть
 scheduler = AsyncIOScheduler(
         jobstores={'default': SQLAlchemyJobStore(url='sqlite:///jobs.sqlite')},
-        timezone=ZoneInfo("Europe/Moscow")
+        timezone='Europe/Moscow'
     )
 
 current_interval = None
@@ -221,10 +221,10 @@ async def notify_users_about_pairs(session: AsyncSession, pairs: list[Pair], bot
                 if partner and partner["telegram_id"]:
                     name = f'{partner["first_name"]} {partner["last_name"]}'.strip()
                     if partner['username']:
-                        link = (f'<a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
+                        link = (f'👥 <a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
                                 f'(если имя некликабельно, попробуй так: @{partner['username']})')
                     else:
-                        link = (f'<a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
+                        link = (f'👥 <a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
                                 f'(если имя некликабельно, это означает, что пользователь '
                                 'запретил его упоминать, но ты можешь найти его в нашей группе.)')
                     partner_links.append(link)
@@ -234,14 +234,14 @@ async def notify_users_about_pairs(session: AsyncSession, pairs: list[Pair], bot
             partners_str = ",\n".join(partner_links)
 
             message = (
-                f"Привет!\nНа этот раз тебе выпала возможность пообщаться с:\n"
+                f"Привет! 🤗\nНа этот раз тебе выпала возможность пообщаться с:\n"
                 f"{partners_str}\n\n"
                 f"Пожалуйста, свяжитесь друг с другом и договорись о встрече в любом удобном формате.\n\n"
                 f"Прекрасной рабочей недели!"
             )
 
             try:
-                logger.info(f'Отправляем сообщение: {message}')
+                logger.debug(f'Отправляем сообщение: {message}')
                 await bot.send_message(chat_id=user_info["telegram_id"], text=message, parse_mode="HTML")
                 await asyncio.sleep(0.05)
             except Exception as e:
@@ -306,15 +306,20 @@ async def save_comment(
 
 
 # отображение для консоли его в проде не будет
+# def show_next_runs(scheduler: AsyncIOScheduler):
+#     logger.debug("🔔 Расписание ближайших запусков задач:")
+#
+#     for job in scheduler.get_jobs():
+#         next_run_utc = job.next_run_time
+#         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
+#         logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M:%S') if next_run_msk else 'нет запланированного запуска'}")
+#
 def show_next_runs(scheduler: AsyncIOScheduler):
-    logger.info("🔔 Расписание ближайших запусков задач:")
+    print("🔔 Расписание ближайших запусков задач:")
 
     for job in scheduler.get_jobs():
-        next_run_utc = job.next_run_time
-        next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-        logger.info(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M:%S') if next_run_msk else 'нет запланированного запуска'}")
-
-
+        next_run = job.next_run_time
+        print(f"🛠 Задача '{job.id}' запустится в: {next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else 'нет запланированного запуска'}")
 def get_next_pairing_date() -> str | None:
     """
     Возвращает дату, когда состоится следующее формирование пар
@@ -326,7 +331,7 @@ def get_next_pairing_date() -> str | None:
         next_run_utc = job.next_run_time
         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
         next_run_str = next_run_msk.strftime('%Y-%m-%d %H:%M:%S по МСК')
-        logger.info(f"🛠 Задача '{job.id}' запустится: {next_run_str}")
+        logger.debug(f"🛠 Задача '{job.id}' запустится: {next_run_str}")
         return next_run_str
     return None
 
@@ -377,7 +382,7 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
         await session.commit()
 
 async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing):
-    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(minutes=3) # Таня - вернуть дни
+    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)
     return start_date_for_feedback_dispatcher
 
 async def schedule_feedback_jobs(session_maker):
@@ -394,7 +399,7 @@ async def schedule_feedback_jobs(session_maker):
             else datetime.now(ZoneInfo("Europe/Moscow"))
         )
 
-        pairing_day = interval_minutes * 7
+        pairing_day = interval_minutes * 1
 
 
     if not scheduler.running:
@@ -405,7 +410,7 @@ async def schedule_feedback_jobs(session_maker):
         print(f"🔁 Интервал изменился: {current_interval} ➡️ {interval_minutes}")
         current_interval = interval_minutes
 
-    def schedule_or_reschedule(job_id, func, interval_minutes, start_date=None):
+    def schedule_or_reschedule(job_id, func, interval_minutes, session_maker, start_date=None):
         job = scheduler.get_job(job_id)
         tz = ZoneInfo("Europe/Moscow")
         now = datetime.now(tz)
@@ -446,8 +451,8 @@ async def schedule_feedback_jobs(session_maker):
                         f"⚠️ Задача '{job_id}' пропущена (должна была быть в {next_run_msk}). Проверяем необходимость ручного запуска.")
 
 
-                    async def maybe_run():
-                        async with async_sessionmaker() as session:
+                    async def maybe_run(session_maker):
+                        async with session_maker() as session:
                             exists = await check_if_already_processed(session, job_id, next_run_msk)
                             if exists:
                                 print(
@@ -459,28 +464,27 @@ async def schedule_feedback_jobs(session_maker):
                             else:
                                 func()
 
-                    asyncio.create_task(maybe_run())
+                        await maybe_run(session_maker)
                 else:
                     print(f"⏭️ Пропущен запуск '{job_id}' более чем на 2 дня. Пропускаем.")
 
 
     start_date_for_auto_pairing = start_date
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, start_date=start_date_for_auto_pairing)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, session_maker, start_date=start_date_for_auto_pairing)
 
     start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing)
-    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, start_date=start_date_for_feedback_dispatcher)
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, session_maker, start_date=start_date_for_feedback_dispatcher)
 
-    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, start_date=start_date_for_auto_pairing)
+    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, session_maker, start_date=start_date_for_auto_pairing)
 
     show_next_runs(scheduler)
 
 async def check_if_already_processed(session, job_id: str, expected_run_time: datetime) -> bool:
-
+    lower = expected_run_time.replace(second=0, microsecond=0)
+    upper = lower + timedelta(minutes=1)
     if job_id == "auto_pairing_weekly":
         result = await session.execute(
-            select(Pair).where(
-                Pair.paired_at >= expected_run_time.replace(second=0, microsecond=0)
-            )
+            select(Pair).where(Pair.paired_at.between(lower, upper))
         )
         return result.scalars().first() is not None
 
@@ -501,4 +505,4 @@ async def reload_scheduled_jobs(session_maker):
         # Перезапускаем задачи с новым интервалом
         await schedule_feedback_jobs(session_maker)
     else:
-        logger.info("✅ Интервал не изменился. Задачи остаются с прежним интервалом.")
+        logger.debug("✅ Интервал не изменился. Задачи остаются с прежним интервалом.")
