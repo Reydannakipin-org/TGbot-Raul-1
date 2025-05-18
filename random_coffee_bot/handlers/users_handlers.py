@@ -1,6 +1,7 @@
 import logging
 from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
+from functools import wraps
 
 from aiogram import F, Router, types
 from aiogram.filters import CommandStart, Command, StateFilter
@@ -16,10 +17,11 @@ from aiogram.types import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
 
+from apscheduler.events import EVENT_JOB_EXECUTED
 # Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
 from database.models import User, Pair, Feedback, Setting
-from bot import CommentStates, save_comment
+from bot import CommentStates, save_comment, auto_pairing_wrapper, force_reschedule_job, job_listener, scheduler
 from services.user_service import (
     create_user,
     delete_user,
@@ -53,6 +55,8 @@ from keyboards.user_buttons import (
     comment_question_kb,
     confirm_edit_comment_kb
 )
+
+
 
 
 NAME_PATTERN = r'^[A-Za-zА-Яа-яЁё]+(?:[-\s][A-Za-zА-Яа-яЁё]+)*$'
@@ -910,6 +914,7 @@ async def set_interval_command(message: Message):
         logger.exception('Произошла ошибка при изменении интервала')
         await message.answer(f"Произошла ошибка: {str(e)}")
 
+
 # Приостановить создание пар
 @user_router.message(Command("pause_pairing"))
 async def pause_pairing_handler(message: Message, session_maker):
@@ -927,6 +932,20 @@ async def pause_pairing_handler(message: Message, session_maker):
     await message.answer("🛑 Формирование пар временно приостановлено.")
 
 # Возобновить создание пар
+# @user_router.message(Command("resume_pairing"))
+# async def resume_pairing_handler(message: Message, session_maker):
+#     async with session_maker() as session:
+#         setting = await session.execute(select(Setting))
+#         setting_obj = setting.scalar_one_or_none()
+#
+#         if setting_obj and setting_obj.auto_pairing_paused:
+#             setting_obj.auto_pairing_paused = False
+#             await session.commit()
+#             await message.reply("✅ Формирование пар возобновлено.")
+#         else:
+#             await message.reply("ℹ️ Формирование пар и так активно.")
+
+# Возобновить создание пар
 @user_router.message(Command("resume_pairing"))
 async def resume_pairing_handler(message: Message, session_maker):
     async with session_maker() as session:
@@ -936,10 +955,25 @@ async def resume_pairing_handler(message: Message, session_maker):
         if setting:
             if setting.auto_pairing_paused:
                 setting.auto_pairing_paused = False
-                setting.first_matching_date = datetime.now(ZoneInfo("Europe/Moscow")) + timedelta(minutes=10)  # новое время старта
+                # timedelta(minutes=10) через сколько запустится формированик
+                setting.first_matching_date = datetime.now(ZoneInfo("Europe/Moscow")) + timedelta(minutes=1)
                 await session.commit()
+
+                start_date = setting.first_matching_date
+                interval_minutes = int(setting.value)
+
+                pairing_day = interval_minutes * 1  # 7
+
+                force_reschedule_job(
+                    job_id="auto_pairing_weekly",
+                    func=auto_pairing_wrapper,
+                    interval_minutes=pairing_day,
+                    session_maker=session_maker,
+                    start_date=start_date
+                )
+
                 await message.answer(
-                    f"✅ Формирование пар возобновлено. Следующий запуск в {setting.first_matching_date.strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"✅ Формирование пар возобновлено. Следующий запуск в {start_date.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             else:
                 await message.answer("ℹ️ Формирование пар уже активно.")
