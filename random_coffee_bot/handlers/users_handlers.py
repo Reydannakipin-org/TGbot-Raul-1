@@ -1,4 +1,6 @@
 import logging
+from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta
 
 from aiogram import F, Router, types
 from aiogram.filters import CommandStart, Command, StateFilter
@@ -16,7 +18,7 @@ from sqlalchemy import select
 
 # Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
-from database.models import User, Pair, Feedback
+from database.models import User, Pair, Feedback, Setting
 from bot import CommentStates, save_comment
 from services.user_service import (
     create_user,
@@ -908,6 +910,42 @@ async def set_interval_command(message: Message):
         logger.exception('Произошла ошибка при изменении интервала')
         await message.answer(f"Произошла ошибка: {str(e)}")
 
+# Приостановить создание пар
+@user_router.message(Command("pause_pairing"))
+async def pause_pairing_handler(message: Message, session_maker):
+    async with session_maker() as session:
+        setting = await session.execute(select(Setting))
+        setting_obj = setting.scalar_one_or_none()
+
+        if setting_obj:
+            setting_obj.auto_pairing_paused = True
+        else:
+            setting_obj = Setting(auto_pairing_paused=True)
+            session.add(setting_obj)
+
+        await session.commit()
+    await message.answer("🛑 Формирование пар временно приостановлено.")
+
+# Возобновить создание пар
+@user_router.message(Command("resume_pairing"))
+async def resume_pairing_handler(message: Message, session_maker):
+    async with session_maker() as session:
+        result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
+        setting = result.scalar_one_or_none()
+
+        if setting:
+            if setting.auto_pairing_paused:
+                setting.auto_pairing_paused = False
+                setting.first_matching_date = datetime.now(ZoneInfo("Europe/Moscow")) + timedelta(minutes=10)  # новое время старта
+                await session.commit()
+                await message.answer(
+                    f"✅ Формирование пар возобновлено. Следующий запуск в {setting.first_matching_date.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+            else:
+                await message.answer("ℹ️ Формирование пар уже активно.")
+        else:
+            await message.answer("⚠️ Настройки не найдены.")
+
 
 @user_router.message(F.text)
 async def fallback_handler(message: Message):
@@ -919,3 +957,4 @@ async def fallback_handler(message: Message):
     await message.answer('Я не знаю такой команды. '
                          'Пожалуйста, используй меню. Если меню '
                          'недоступно, отправь команду /start.')
+

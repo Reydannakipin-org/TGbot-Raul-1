@@ -52,6 +52,15 @@ async def feedback_dispatcher_wrapper():
 
 async def auto_pairing_wrapper():
     bot, dispatcher, session_maker = job_context.get_context()
+
+    async with session_maker() as session:
+        result = await session.execute(select(Setting))
+        setting_obj = result.scalar_one_or_none()
+
+        if setting_obj and setting_obj.auto_pairing_paused == 1:  # если в базе '1' (или True)
+            logger.info("🛑 Задача auto_pairing_weekly приостановлена (флаг в настройках).")
+            return  # не запускаем auto_pairing
+
     await auto_pairing(session_maker, bot)
 
 async def reload_scheduled_wrapper():

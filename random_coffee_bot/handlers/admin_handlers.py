@@ -822,3 +822,4 @@ async def other_type_handler(message: Message):
     logger.info('Админ отправил что-то кроме текста.')
     await message.answer(ADMIN_TEXTS['admin_unknown_type_data'],
                          reply_markup=buttons_kb_admin)
+

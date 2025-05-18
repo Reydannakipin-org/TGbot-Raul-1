@@ -103,7 +103,7 @@ class Setting(Base):
     key = Column(String, unique=True, nullable=False, default="global_interval")
     value = Column(Integer, nullable=False, default=2)
     first_matching_date = Column(DateTime, default=datetime(2025, 5, 15, 10, 0))
-
+    auto_pairing_paused = Column(Boolean, default=False)
 
 class Notification(CommonMixin, Base):
     """Таблица для текстов рассылки от админа."""

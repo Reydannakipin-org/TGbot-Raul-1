@@ -323,3 +323,6 @@ def parse_callback_data(data: str) -> tuple[str, str]:
     except ValueError:
         logger.error(f'Неверные данные у коллбека: {data}')
         raise
+
+
+

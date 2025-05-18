@@ -481,3 +481,4 @@ async def set_first_pairing_date(recieved_date: datetime):
     except SQLAlchemyError as e:
         await session.rollback()
         logger.exception(f'Ошибка при установке интервала и даты: {e}')
+
