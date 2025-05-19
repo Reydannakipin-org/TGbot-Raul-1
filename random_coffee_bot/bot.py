@@ -377,7 +377,7 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
         await session.commit()
 
 async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing):
-    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(minutes=3)  # Минуты для тестирования!
+    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)  # Минуты для тестирования!
     return start_date_for_feedback_dispatcher
 
 async def schedule_feedback_jobs(session_maker):
@@ -419,7 +419,7 @@ async def schedule_feedback_jobs(session_maker):
 
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(minutes=interval_days, start_date=effective_start), # Минуты для тестирования!
+            trigger=IntervalTrigger(days=interval_days, start_date=effective_start), # Минуты для тестирования!
             id=job_id,
             replace_existing=True,
             misfire_grace_time=172800,  # 2 дня
