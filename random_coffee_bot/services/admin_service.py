@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 
+from config import MOSCOW_TZ
 from database.db import AsyncSessionLocal
 from database.models import Feedback, Notification, Pair, Setting, User
 from services.constants import DATE_FORMAT
@@ -302,7 +303,12 @@ async def export_pairs_to_gsheet(
         return (met, comment)
 
     for p in pairs:
-        pairing_date = p.paired_at.strftime(DATE_FORMAT)
+        # на время тестирования
+        pairing_date_utc = p.paired_at
+        pairing_date_msk = pairing_date_utc.astimezone(MOSCOW_TZ)
+        pairing_date = pairing_date_msk.strftime('%Y-%m-%d %H:%M')
+        # на время тестирования
+        # pairing_date = p.paired_at.strftime(DATE_FORMAT)
         fb_by_user = {fb.user_id: fb for fb in p.feedbacks}
         u1_full_name = (f'{p.user1.first_name or ""} {p.user1.last_name or ""}'
                         ).strip()
