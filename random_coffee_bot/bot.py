@@ -312,7 +312,7 @@ def show_next_runs(scheduler: AsyncIOScheduler):
     for job in scheduler.get_jobs():
         next_run_utc = job.next_run_time
         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-        logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M:%S') if next_run_msk else 'нет запланированного запуска'}")
+        logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M по МСК') if next_run_msk else 'нет запланированного запуска'}")
 
 
 def get_next_pairing_date() -> str | None:
@@ -325,7 +325,7 @@ def get_next_pairing_date() -> str | None:
     if job:
         next_run_utc = job.next_run_time
         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-        next_run_str = next_run_msk.strftime('%Y-%m-%d %H:%M:%S по МСК')
+        next_run_str = next_run_msk.strftime('%Y-%m-%d %H:%M по МСК')
         logger.debug(f"🛠 Задача '{job.id}' запустится: {next_run_str}")
         return next_run_str
     return None
@@ -377,7 +377,7 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
         await session.commit()
 
 async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing):
-    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)
+    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(minutes=3)  # Минуты для тестирования!
     return start_date_for_feedback_dispatcher
 
 async def schedule_feedback_jobs(session_maker):
@@ -419,7 +419,7 @@ async def schedule_feedback_jobs(session_maker):
 
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(days=interval_days, start_date=effective_start),
+            trigger=IntervalTrigger(minutes=interval_days, start_date=effective_start), # Минуты для тестирования!
             id=job_id,
             replace_existing=True,
             misfire_grace_time=172800,  # 2 дня
