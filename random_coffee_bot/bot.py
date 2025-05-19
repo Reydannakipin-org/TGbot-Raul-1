@@ -20,6 +20,7 @@ from aiogram.fsm.state import State, StatesGroup
 from config import MOSCOW_TZ
 from database.models import User, Pair, Setting, Feedback
 from dotenv import load_dotenv
+from services.admin_service import notify_users_about_pairs
 
 
 logger = logging.getLogger(__name__)
@@ -185,69 +186,6 @@ async def generate_unique_pairs(session, users: list[User]) -> list[Pair]:
     return pair_objs
 
 
-async def notify_users_about_pairs(session: AsyncSession, pairs: list[Pair], bot: Bot):
-    """Отправляет сообщения участникам пар через Telegram, используя HTML-ссылки с tg://user?id."""
-    for pair in pairs:
-        user_ids = [pair.user1_id, pair.user2_id]
-        if pair.user3_id:
-            user_ids.append(pair.user3_id)
-
-        # Загружаем данные всех участников пары
-        result = await session.execute(
-            select(User.id, User.username, User.telegram_id, User.first_name, User.last_name).where(User.id.in_(user_ids))
-        )
-        user_data = {
-            row.id: {
-                "telegram_id": row.telegram_id,
-                "first_name": row.first_name or "Пользователь",
-                "last_name": row.last_name,
-                "username": row.username
-            }
-            for row in result.fetchall()
-        }
-
-        for user_id in user_ids:
-            user_info = user_data.get(user_id)
-            if not user_info or not user_info["telegram_id"]:
-                logger.info(f"❗ Не удалось найти telegram_id для user_id={user_id}")
-                continue
-
-            # Формируем ссылки на партнёров
-            partner_links = []
-            for partner_id in user_ids:
-                if partner_id == user_id:
-                    continue
-                partner = user_data.get(partner_id)
-                if partner and partner["telegram_id"]:
-                    name = f'{partner["first_name"]} {partner["last_name"]}'.strip()
-                    if partner['username']:
-                        link = (f'👥 <a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
-                                f'(если имя некликабельно, попробуй так: @{partner['username']})')
-                    else:
-                        link = (f'👥 <a href="tg://user?id={partner["telegram_id"]}">{name}</a> '
-                                f'(если имя некликабельно, это означает, что пользователь '
-                                'запретил его упоминать, но ты можешь найти его в нашей группе.)')
-                    partner_links.append(link)
-                else:
-                    partner_links.append("неизвестный пользователь")
-
-            partners_str = ",\n".join(partner_links)
-
-            message = (
-                f"Привет! 🤗\nНа этот раз тебе выпала возможность пообщаться с:\n"
-                f"{partners_str}\n\n"
-                f"Пожалуйста, свяжитесь друг с другом и договорись о встрече в любом удобном формате.\n\n"
-                f"Прекрасной рабочей недели!"
-            )
-
-            try:
-                logger.debug(f'Отправляем сообщение: {message}')
-                await bot.send_message(chat_id=user_info["telegram_id"], text=message, parse_mode="HTML")
-                await asyncio.sleep(0.05)
-            except Exception as e:
-                logger.info(f"⚠️ Не удалось отправить сообщение для user_id={user_id}: {e}")
-
-
 async def auto_pairing(session_maker, bot: Bot):
     async with session_maker() as session:
         users = await get_users_ready_for_matching(session)
@@ -312,7 +250,7 @@ def show_next_runs(scheduler: AsyncIOScheduler):
     for job in scheduler.get_jobs():
         next_run_utc = job.next_run_time
         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-        logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M:%S') if next_run_msk else 'нет запланированного запуска'}")
+        logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M по МСК') if next_run_msk else 'нет запланированного запуска'}")
 
 
 def get_next_pairing_date() -> str | None:
@@ -325,7 +263,7 @@ def get_next_pairing_date() -> str | None:
     if job:
         next_run_utc = job.next_run_time
         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-        next_run_str = next_run_msk.strftime('%Y-%m-%d %H:%M:%S по МСК')
+        next_run_str = next_run_msk.strftime('%Y-%m-%d %H:%M по МСК')
         logger.debug(f"🛠 Задача '{job.id}' запустится: {next_run_str}")
         return next_run_str
     return None
@@ -339,7 +277,7 @@ def job_listener(event):
 async def feedback_dispatcher_job(bot: Bot, session_maker):
     async with session_maker() as session:
         result_pairs = await session.execute(
-            select(Pair).where(Pair.feedback_sent == False)
+            select(Pair).where(Pair.feedback_sent.is_(False))
         )
         pairs = result_pairs.scalars().all()
 
@@ -353,17 +291,19 @@ async def feedback_dispatcher_job(bot: Bot, session_maker):
                 user_ids.append(pair.user3_id)
 
             result_users = await session.execute(
-                select(User).where(User.id.in_(user_ids), User.has_permission == True)
+                select(User).where(User.id.in_(user_ids),
+                                   User.has_permission.is_(True))
             )
             users = result_users.scalars().all()
 
+            kb = meeting_question_kb(pair.id)
             success = True
             for user in users:
                 try:
                     await bot.send_message(
                         user.telegram_id,
                         "Привет! Прошла ли встреча?",
-                        reply_markup=meeting_question_kb(pair.id)
+                        reply_markup=kb
                     )
                     await asyncio.sleep(0.05)
                 except Exception as e:

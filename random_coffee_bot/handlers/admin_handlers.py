@@ -124,7 +124,7 @@ async def process_get_all_users_list(message: Message, state: FSMContext):
         logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
     await message.answer(
-        text="Выберите нужного пользователя из списка:",
+        text=ADMIN_TEXTS['ask_choose_user_from_list'],
         reply_markup=kb_bilder.as_markup()
     )
     await state.clear()
@@ -158,7 +158,7 @@ async def paginate_users(callback: CallbackQuery,
             await callback.message.answer(ADMIN_TEXTS['db_error'])
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
-            text="Выберите нужного пользователя из списка:",
+            text=ADMIN_TEXTS['ask_choose_user_from_list'],
             reply_markup=kb.as_markup()
         )
     await callback.answer()
@@ -169,7 +169,7 @@ async def paginate_users(callback: CallbackQuery,
 async def show_user_details(callback: CallbackQuery,
                             callback_data: UsersCallbackFactory):
     """
-    Хэндлре срабатывает, когда админ нажимает на инлайн-кнопку с
+    Хэндлер срабатывает, когда админ нажимает на инлайн-кнопку с
     именем пользователя в списке пользователей.
     """
     user_telegram_id = callback_data.telegram_id

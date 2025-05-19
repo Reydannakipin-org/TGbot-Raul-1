@@ -1,3 +1,4 @@
+import html
 import logging
 from datetime import date, datetime
 from typing import Optional, Sequence
@@ -334,23 +335,23 @@ async def export_pairs_to_gsheet(
 
 
 # Служебная на время разработки
-async def create_pair(session: AsyncSession,
-                      user1_id: int,
-                      user2_id: int) -> Pair:
-    """Создает пару. Возвращает экземпляр пары."""
-    pair = Pair(
-                user1_id=user1_id,
-                user2_id=user2_id
-            )
-    session.add(pair)
-    try:
-        await session.commit()
-        await session.refresh(pair)
-        return pair
-    except SQLAlchemyError as e:
-        await session.rollback()
-        logger.exception(f'Ошибка при создании пары для {user1_id} и {user2_id}')
-        raise e
+# async def create_pair(session: AsyncSession,
+#                       user1_id: int,
+#                       user2_id: int) -> Pair:
+#     """Создает пару. Возвращает экземпляр пары."""
+#     pair = Pair(
+#                 user1_id=user1_id,
+#                 user2_id=user2_id
+#             )
+#     session.add(pair)
+#     try:
+#         await session.commit()
+#         await session.refresh(pair)
+#         return pair
+#     except SQLAlchemyError as e:
+#         await session.rollback()
+#         logger.exception(f'Ошибка при создании пары для {user1_id} и {user2_id}')
+#         raise e
 
 
 async def create_notif(session: AsyncSession, received_text: str
@@ -483,3 +484,81 @@ async def set_first_pairing_date(recieved_date: datetime):
     except SQLAlchemyError as e:
         await session.rollback()
         logger.error(f'Ошибка при установке интервала и даты: {e}')
+
+
+async def notify_users_about_pairs(session: AsyncSession,
+                                   pairs: list[Pair],
+                                   bot: Bot) -> None:
+    """
+    Отправляет сообщения участникам пар через Telegram,
+    используя HTML-ссылки с tg://user?id.
+    """
+    all_ids = {
+        *(p.user1_id for p in pairs),
+        *(p.user2_id for p in pairs),
+        *(p.user3_id for p in pairs if p.user3_id is not None)
+    }
+    result = await session.execute(
+        select(User).where(User.id.in_(all_ids))
+    )
+    users = {u.id: u for u in result.scalars().all()}
+
+    def make_link(u: User) -> str:
+        name = html.escape(
+            f'{u.first_name or "Пользователь"} {u.last_name or ""}'.strip())
+        if u.username:
+            return (
+                f'👥 <a href="tg://user?id={u.telegram_id}">{name}</a> '
+                f'(если имя некликабельно, попробуй так: @{u.username})'
+            )
+        return (
+            f'👥 <a href="tg://user?id={u.telegram_id}">{name}</a> '
+            '(если имя некликабельно, это означает, что пользователь '
+            'запретил его упоминать, но ты можешь найти его в нашей группе.)'
+        )
+
+    for pair in pairs:
+        user_ids = [pair.user1_id, pair.user2_id]
+        if pair.user3_id:
+            user_ids.append(pair.user3_id)
+
+        for user_id in user_ids:
+            user = users.get(user_id)
+            if not user or not user.telegram_id:
+                logger.info(f'❗ Не удалось найти telegram_id={user_id}')
+                continue
+
+            partner_links = [
+                make_link(users[p]) if (p in users and users[p].telegram_id)
+                else "неизвестный пользователь"
+                for p in user_ids if p != user_id
+            ]
+
+            partners_str = ",\n".join(partner_links)
+
+            message = (
+                'Привет! 🤗\n'
+                'На этот раз тебе выпала возможность пообщаться с:\n'
+                f'{partners_str}\n\n'
+                'Пожалуйста, свяжитесь друг с другом и договорись о встрече '
+                'в любом удобном формате.\n\n'
+                'Прекрасной рабочей недели!'
+            )
+
+            try:
+                logger.debug(f'Отправляем сообщение: {message}')
+                await bot.send_message(chat_id=user_id, text=message,
+                                       parse_mode="HTML")
+                await asyncio.sleep(0.05)
+            except TelegramForbiddenError:
+                logger.warning(f'Юзер {user_id} заблокировал бота.')
+                try:
+                    await set_user_active(session, user_id, False)
+                    logger.info(f'Статус юзера {user_id} изменен '
+                                'на неактивный.')
+                except SQLAlchemyError as e:
+                    logger.error('Не удалось изменить статус юзера '
+                                 f'{user_id} на неактивный: {e}')
+            except Exception as e:
+                logger.exception('⚠️ Не удалось отправить сообщение для '
+                                 f'telegram_id={user_id}: {e}')

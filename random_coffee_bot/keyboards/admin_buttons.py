@@ -206,7 +206,7 @@ async def generate_inline_user_list(page: int = 1) -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
 
     for u in users:
-        text = f"{u.last_name or ''} {u.first_name or ''}".strip() or f"#{u.telegram_id}"
+        text = f'{u.last_name or ""} {u.first_name or ""}'.strip() or f'#{u.telegram_id}'
         kb.button(
             text=text,
             callback_data=UsersCallbackFactory(telegram_id=u.telegram_id).pack()
@@ -214,12 +214,12 @@ async def generate_inline_user_list(page: int = 1) -> InlineKeyboardBuilder:
 
     if page > 1:
         kb.button(
-            text="⬅️ Назад",
+            text=INLINE_BUTTON_TEXTS['go_back'],
             callback_data=PageCallbackFactory(page=page - 1).pack()
         )
     if page * ITEMS_PER_PAGE < total:
         kb.button(
-            text="Вперёд ➡️",
+            text=INLINE_BUTTON_TEXTS['go_forward'],
             callback_data=PageCallbackFactory(page=page + 1).pack()
         )
 
