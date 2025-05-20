@@ -33,7 +33,7 @@ from services.user_service import (
 )
 
 # Импорт фильтров и состояний
-from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
+from filters.super_admin_filters import AdminCallbackFilter, AdminMessageFilter
 from states.user_states import FSMUserForm
 
 from keyboards.user_buttons import (
@@ -91,7 +91,8 @@ async def process_start_command(message: Message, state: FSMContext):
                                          message.from_user.first_name,
                                          message.from_user.last_name)
                 logger.debug(f'Пользователь добавлен в БД. '
-                            f'Имя {user.first_name}. Фамилия {user.last_name}')
+                             f'Имя {user.first_name}. Фамилия {user.last_name}'
+                             )
                 await message.answer(TEXTS['start'])
                 await message.answer(TEXTS['ask_first_name'])
                 await state.set_state(FSMUserForm.waiting_for_first_name)
@@ -304,7 +305,6 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
             )
 
 
-
 @user_router.callback_query(lambda c: c.data.startswith("confirm_activate_"),
                             StateFilter(default_state))
 async def process_activate_confirmation(callback_query: CallbackQuery):
@@ -356,8 +356,12 @@ async def process_activate_confirmation(callback_query: CallbackQuery):
 
 
 # --- Ответ: Да/Нет встреча ---
-@user_router.callback_query(F.data.startswith("meeting_yes") | F.data.startswith("meeting_no"))
-async def process_meeting_feedback(callback: types.CallbackQuery, session_maker):
+@user_router.callback_query(
+    F.data.startswith("meeting_yes") | F.data.startswith("meeting_no")
+)
+async def process_meeting_feedback(
+    callback: types.CallbackQuery, session_maker
+):
     await callback.answer()
     data = callback.data
     _, pair_id_str = parse_callback_data(callback.data)
@@ -366,7 +370,9 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
     telegram_user_id = callback.from_user.id
 
     async with session_maker() as session:
-        user = await session.execute(select(User).filter_by(telegram_id=telegram_user_id))
+        user = await session.execute(
+            select(User).filter_by(telegram_id=telegram_user_id)
+        )
         user = user.scalar_one_or_none()
 
         if user is None:
@@ -385,10 +391,16 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
             if existing_feedback:
                 # Если отзыв с ответом "нет" уже существует, уведомляем пользователя
                 if existing_feedback.did_meet is False:
-                    await callback.message.answer("Ты уже оставил отзыв с ответом 'нет' для этой встречи.")
+                    await callback.message.answer(
+                        "Ты уже оставил отзыв с ответом 'нет'"
+                        "для этой встречи."
+                    )
                     return
                 if existing_feedback.did_meet is True:
-                    await callback.message.answer("Ты уже оставил отзыв с ответом 'да' для этой встречи и не можешь поменять на 'нет'.")
+                    await callback.message.answer(
+                        "Ты уже оставил отзыв с ответом 'да' для "
+                        "этой встречи и не можешь поменять на 'нет'."
+                    )
                     return
                 else:
                     # Если отзыв с ответом "да" существует, обновляем его
@@ -398,12 +410,13 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
 
             else:
                 # Если отзыва нет, создаём новый
-                feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=False)
+                feedback = Feedback(
+                    pair_id=pair_id, user_id=user_id, did_meet=False
+                )
                 session.add(feedback)
                 await session.commit()
 
             await callback.message.edit_text("Спасибо за информацию!")
-
 
         elif data.startswith("meeting_yes"):
             if existing_feedback:
@@ -412,7 +425,9 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
                     await session.commit()
 
             else:
-                feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=True)
+                feedback = Feedback(
+                    pair_id=pair_id, user_id=user_id, did_meet=True
+                )
                 session.add(feedback)
                 await session.commit()
 
@@ -424,8 +439,13 @@ async def process_meeting_feedback(callback: types.CallbackQuery, session_maker)
 
 
 # --- Ответ: Комментарий или нет ---
-@user_router.callback_query(F.data.startswith("leave_comment") | F.data.startswith("no_comment"))
-async def process_comment_choice(callback: types.CallbackQuery, state: FSMContext, session_maker):
+@user_router.callback_query(
+    F.data.startswith("leave_comment") | F.data.startswith("no_comment")
+)
+async def process_comment_choice(
+    callback: types.CallbackQuery,
+    state: FSMContext, session_maker
+):
     await callback.answer()
     data = callback.data
     action, pair_id = data.split(":")
@@ -433,7 +453,9 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
     telegram_user_id = callback.from_user.id
 
     async with session_maker() as session:
-        user = await session.execute(select(User).filter_by(telegram_id=telegram_user_id))
+        user = await session.execute(
+            select(User).filter_by(telegram_id=telegram_user_id)
+        )
         user = user.scalar_one_or_none()
 
         if user is None:
@@ -455,7 +477,12 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
                 await callback.message.answer("Спасибо! Отзыв учтён ✅")
                 return
 
-            feedback = Feedback(pair_id=pair_id, user_id=user_id, did_meet=True, comment=None)
+            feedback = Feedback(
+                pair_id=pair_id,
+                user_id=user_id,
+                did_meet=True,
+                comment=None
+            )
             session.add(feedback)
             await session.commit()
 
@@ -466,10 +493,19 @@ async def process_comment_choice(callback: types.CallbackQuery, state: FSMContex
             # Если выбран вариант с комментарием, запускаем ожидание ввода
             await state.set_state(CommentStates.waiting_for_comment)
             await state.update_data(pair_id=pair_id)
-            await callback.message.answer("Введи комментарий (или отправь /cancel, чтобы отменить)")
+            await callback.message.answer(
+                "Введи комментарий (или отправь /cancel, чтобы отменить)"
+            )
+
+
 #11111
-@user_router.callback_query(F.data.startswith("confirm_edit") | F.data.startswith("cancel_edit"))
-async def handle_edit_decision(callback: types.CallbackQuery, state: FSMContext, **kwargs):
+@user_router.callback_query(
+    F.data.startswith("confirm_edit") | F.data.startswith("cancel_edit")
+)
+async def handle_edit_decision(
+    callback: types.CallbackQuery,
+    state: FSMContext, **kwargs
+):
     await callback.answer()
     data = callback.data
     action, pair_id_str = data.split(":")
@@ -491,12 +527,19 @@ async def handle_edit_decision(callback: types.CallbackQuery, state: FSMContext,
         await state.clear()
         return
 
-    status_msg = await save_comment(user_id, temp_comment, session_maker, pair_id, force_update=True)
+    status_msg = await save_comment(
+        user_id,
+        temp_comment,
+        session_maker,
+        pair_id,
+        force_update=True
+    )
 
     await state.clear()
 
     await callback.message.edit_reply_markup()
     await callback.message.answer(status_msg)
+
 
 #--- Обработка /cancel ---
 @user_router.message(CommentStates.waiting_for_comment, F.text == "/cancel")
@@ -512,26 +555,32 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
     user_id = message.from_user.id
     comment_text = message.text.strip()
 
-    button_texts = ['📋 Список участников',
-                    '👥 Управление участниками',
-                    '📊 Выгрузить в гугл таблицу',
-                    '🤝 Изменить интервал',
-                    '✏️ Изменить мои данные',
-                    '📊 Мой статус участия',
-                    '🗓️ Изменить частоту встреч',
-                    '⏸️ Приостановить участие',
-                    '❓ Как работает Random Coffee?',
-                    '▶️ Возобновить участие',
-                    ]
+    button_texts = [
+        '📋 Список участников',
+        '👥 Управление участниками',
+        '📊 Выгрузить в гугл таблицу',
+        '🤝 Изменить интервал',
+        '✏️ Изменить мои данные',
+        '📊 Мой статус участия',
+        '🗓️ Изменить частоту встреч',
+        '⏸️ Приостановить участие',
+        '❓ Как работает Random Coffee?',
+        '▶️ Возобновить участие',
+    ]
 
     if comment_text in button_texts:
-        await message.answer("Пожалуйста, введи комментарий вручную, а не выбирай кнопку.")
+        await message.answer(
+            "Пожалуйста, введи комментарий вручную, а не выбирай кнопку."
+        )
         return
 
     data = await state.get_data()
     pair_id = data.get("pair_id")
     if pair_id is None:
-        await message.answer("Извини, произошла ошибка при записи комментария. Сообщи об этом админу.")
+        await message.answer(
+            "Извини, произошла ошибка при записи комментария. "
+            "Сообщи об этом админу."
+        )
         await state.clear()
         return
 
@@ -545,7 +594,9 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
             return
 
         feedback_query = await session.execute(
-            select(Feedback).where(Feedback.user_id == user.id, Feedback.pair_id == pair_id)
+            select(Feedback).where(
+                Feedback.user_id == user.id, Feedback.pair_id == pair_id
+            )
         )
         existing_feedback = feedback_query.scalar()
 
@@ -553,13 +604,19 @@ async def receive_comment(message: types.Message, state: FSMContext, **kwargs):
         # Сохраняем временно комментарий и спрашиваем подтверждение
         await state.update_data(temp_comment=comment_text)
         await message.answer(
-            "Ты уже оставлял комментарий для этой встречи.\nХочешь изменить его?",
+            "Ты уже оставлял комментарий для "
+            "этой встречи.\nХочешь изменить его?",
             reply_markup=confirm_edit_comment_kb(pair_id)
         )
         return
 
     # Иначе сохраняем
-    status_msg = await save_comment(user_id, comment_text, session_maker, pair_id)
+    status_msg = await save_comment(
+        user_id,
+        comment_text,
+        session_maker,
+        pair_id
+    )
     await message.answer(status_msg)
     await state.clear()
 

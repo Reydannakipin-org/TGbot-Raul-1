@@ -313,8 +313,9 @@ async def export_pairs_to_gsheet(
         fb2 = fb_by_user.get(p.user2_id)
         u2_did_met, u2_comment = get_feedback_data(fb2)
         if p.user3_id:
-            u3_full_name = (f'{p.user3.first_name or ""} {p.user3.last_name or ""}'
-                            ).strip()
+            u3_full_name = (
+                f'{p.user3.first_name or ""} {p.user3.last_name or ""}'
+            ).strip()
             fb3 = fb_by_user.get(p.user3_id)
             u3_did_met, u3_comment = get_feedback_data(fb3)
         else:
@@ -349,7 +350,9 @@ async def create_pair(session: AsyncSession,
         return pair
     except SQLAlchemyError as e:
         await session.rollback()
-        logger.exception(f'Ошибка при создании пары для {user1_id} и {user2_id}')
+        logger.exception(
+            f'Ошибка при создании пары для {user1_id} и {user2_id}'
+        )
         raise e
 
 
@@ -479,7 +482,46 @@ async def set_first_pairing_date(recieved_date: datetime):
                 await session.commit()
 
             logger.info(f'Установленный интервал: {current_interval.value}\n'
-                        f'Записанная дата в БД: {current_interval.first_matching_date} (МСК-3)')
+                        f'Записанная дата в БД: {
+                            current_interval.first_matching_date
+                        } (МСК-3)'
+                        )
     except SQLAlchemyError as e:
         await session.rollback()
         logger.error(f'Ошибка при установке интервала и даты: {e}')
+
+
+async def set_user_as_admin(user_id: int):
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).filter_by(telegram_id=user_id))
+            user = result.scalars().first()
+
+            if user:
+                user.is_admin = True
+                session.add(user)
+                await session.commit()
+                return True
+            else:
+                return False
+    except Exception as e:
+        logger.error(f"Ошибка при установке администратора: {e}")
+        return False
+
+
+async def set_admin_as_user(user_id: int):
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).filter_by(telegram_id=user_id))
+            user = result.scalars().first()
+
+            if user:
+                user.is_admin = False
+                session.add(user)
+                await session.commit()
+                return True
+            else:
+                return False
+    except Exception as e:
+        logger.error(f"Ошибка при установке администратора: {e}")
+        return False
