@@ -6,6 +6,9 @@ from database.db import AsyncSessionLocal
 
 
 class AdminFilter(BaseFilter):
+    '''
+    Фильтр для НЕ ГЛАВНОГО админа.
+    '''
     def __init__(self):
         pass
 
