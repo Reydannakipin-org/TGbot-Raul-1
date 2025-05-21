@@ -399,7 +399,6 @@ def force_reschedule_job(job_id, func, interval_minutes, session_maker, start_da
     tz = ZoneInfo("Europe/Moscow")
     effective_start = (start_date or datetime.now(tz)).astimezone(tz)
 
-    # Удаляем задачу, если она уже есть
     job = scheduler.get_job(job_id)
     if job:
         scheduler.remove_job(job_id)
