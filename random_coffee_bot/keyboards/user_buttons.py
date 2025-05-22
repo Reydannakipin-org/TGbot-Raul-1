@@ -155,16 +155,15 @@ def meeting_question_kb(pair_id: int):
         [InlineKeyboardButton(text="❌ Нет", callback_data=f"meeting_no:{pair_id}")]
     ])
 
-def comment_question_kb(pair_id: int):
+def comment_question_kb(feedback_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✍️ Комментарий (оставить/изменить)", callback_data=f"leave_comment:{pair_id}")],
-        [InlineKeyboardButton(text="⏭️ Без комментария", callback_data=f"no_comment:{pair_id}")]
+        [InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['leave_comment'], callback_data=f"leave_comment:{feedback_id}")],
+        [InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['no_comment'], callback_data=f"no_comment:{feedback_id}")]
     ])
 
-def confirm_edit_comment_kb(pair_id: int) -> InlineKeyboardMarkup:
+def confirm_edit_comment_kb(feedback_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✏️ Да, изменить", callback_data=f"confirm_edit:{pair_id}"),
-            InlineKeyboardButton(text="❌ Нет, оставить", callback_data=f"cancel_edit:{pair_id}")
-        ]
+        [InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['save_comment'], callback_data=f"save_comment:{feedback_id}")],
+        [InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['adit_comment'], callback_data=f"confirm_edit:{feedback_id}")],
+        [InlineKeyboardButton(text=INLINE_BUTTON_TEXTS['cancel_comment'], callback_data=f"cancel_comment:{feedback_id}")]
     ])
