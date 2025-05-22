@@ -11,9 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import select
 
-# Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
 from database.models import User, Feedback
 from bot import CommentStates, save_comment
@@ -32,8 +30,7 @@ from services.user_service import (
     create_text_with_interval,
 )
 
-# Импорт фильтров и состояний
-from filters.super_admin_filters import AdminCallbackFilter, AdminMessageFilter
+from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
 from states.user_states import FSMUserForm
 
 from keyboards.user_buttons import (
@@ -49,7 +46,6 @@ from keyboards.user_buttons import (
     confirm_edit_comment_kb
 )
 
-# Импорт текстов
 from texts import (
     TEXTS,
     KEYBOARD_BUTTON_TEXTS,

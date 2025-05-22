@@ -3,9 +3,15 @@ from aiogram import types
 from database.models import User
 from sqlalchemy import select
 from database.db import AsyncSessionLocal
+from config import load_config
 
 
-class AdminFilter(BaseFilter):
+config = load_config()
+admin_id = config.tg_bot.admin_tg_id
+admins_list = config.tg_bot.admins_list
+
+
+class AdminMessageFilter(BaseFilter):
     '''
     Фильтр для НЕ ГЛАВНОГО админа.
     '''
@@ -22,3 +28,16 @@ class AdminFilter(BaseFilter):
             user = result.scalars().first()
 
             return user.is_admin if user else False
+
+
+class AdminCallbackFilter(BaseFilter):
+    async def __call__(self, callback_query: types.CallbackQuery) -> bool:
+        user_id = callback_query.from_user.id
+
+        if user_id in admins_list:
+            return True
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalars().first()
+
+            return user is not None and user.is_admin

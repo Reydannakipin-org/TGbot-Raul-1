@@ -12,8 +12,8 @@ from bot import scheduler, schedule_feedback_jobs
 from aiogram import Bot, Dispatcher
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from config import Config, load_config
-from handlers.admin_handlers import super_admin_router
-from handlers.super_admin_handlers import admin_router
+from handlers.super_admin_handlers import super_admin_router
+from handlers.admin_handlers import admin_router
 from handlers.common_handler import common_router
 from handlers.users_handlers import user_router
 from middlewares import AccessMiddleware
@@ -50,7 +50,7 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(user_router)
     dp.include_router(common_router)
-    
+
 
     #  На случай, если нужно будет запланировать все задачи с чистого листа.
     # scheduler.start()
