@@ -65,6 +65,7 @@ sudo apt install docker-compose-plugin
 sudo systemctl status docker
 ```
 Вы должны увидеть статус active. Выйдите из просмотра статуса: Ctrl+C
+
 7. Добавьте своего пользователя в группу docker, чтобы не каждый раз писать sudo:
 ```
 sudo usermod -aG docker $USER
@@ -163,6 +164,7 @@ docker compose version
 ```
 Если нет, то установите Docker Desktop по ссылке: https://docs.docker.com/get-started/get-docker/
 Создайте аккаунт и войдите в приложение.
+
 3. Далее выполните шаги 2, 4 и 5 из раздела "Запуск на сервере" (приведенные выше).
 
 
