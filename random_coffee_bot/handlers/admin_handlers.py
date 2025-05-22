@@ -718,7 +718,8 @@ async def process_get_text_of_notification(message: Message,
         await message.answer(ADMIN_TEXTS['ask_text_for_notif'])
         return
     else:
-        received_text = message.text.strip()
+        logger.info(f'получен текст для рассылки: {message.html_text}')
+        received_text = message.html_text
     try:
         async with AsyncSessionLocal() as session:
             notif = await adm.create_notif(session, received_text)
@@ -730,7 +731,7 @@ async def process_get_text_of_notification(message: Message,
                     .format(notif_text=notif.text))
     inline_kb = generate_inline_notification_options(notif.id)
     await state.clear()
-    await message.answer(confirm_text, reply_markup=inline_kb)
+    await message.answer(confirm_text, reply_markup=inline_kb, parse_mode='HTML')
 
 
 @admin_router.callback_query(lambda c: c.data.startswith('confirm_notif:'),
@@ -753,7 +754,8 @@ async def process_send_notif(callback: CallbackQuery, bot: Bot):
         return
     if isinstance(callback.message, Message):
         await callback.message.edit_text(ADMIN_TEXTS['start_sending_notif']
-                                         .format(notif_text=notif.text))
+                                         .format(notif_text=notif.text),
+                                         parse_mode='HTML')
     try:
         delivered_notif, reason = await adm.broadcast_notif_to_active_users(
             bot, notif)
