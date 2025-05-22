@@ -410,7 +410,7 @@ async def broadcast_notif_to_active_users(
 
     for telegram_id in user_telegram_ids:
         try:
-            await bot.send_message(telegram_id, notif.text)
+            await bot.send_message(telegram_id, notif.text, parse_mode='HTML')
             await asyncio.sleep(0.05)
             delivered_count += 1
         except TelegramForbiddenError:
