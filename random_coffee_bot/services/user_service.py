@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,6 +133,8 @@ async def create_text_status_active(
 
     first_name = user.first_name or "Не указано"
     last_name = user.last_name or "Не указано"
+    username = (user.username or
+                'не задан (рекомендуем задать в настройках Телеграма)')
     meetings = user.pairing_interval
     status = user.is_active
 
@@ -152,6 +154,7 @@ async def create_text_status_active(
     message = USER_TEXTS['participation_status'].format(
         first_name=first_name,
         last_name=last_name,
+        username=username,
         interval=interval_text,
         status=status_text
     )
@@ -349,3 +352,14 @@ def parse_callback_data(data: str) -> tuple[str, str]:
     except ValueError:
         logger.error(f'Неверные данные у коллбека: {data}')
         raise
+
+
+async def update_username(session: AsyncSession,
+                          telegram_id: int,
+                          username: Optional[str]) -> None:
+    await session.execute(
+            update(User)
+            .where(User.telegram_id == telegram_id)
+            .values(username=username)
+        )
+    await session.commit()

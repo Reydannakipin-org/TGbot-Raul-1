@@ -180,7 +180,7 @@ class PageCallbackFactory(CallbackData, prefix='page'):
     page: int
 
 
-ITEMS_PER_PAGE = 2
+ITEMS_PER_PAGE = 10
 
 
 async def generate_inline_user_list(page: int = 1) -> InlineKeyboardBuilder:

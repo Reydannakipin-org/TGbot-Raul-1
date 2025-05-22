@@ -5,23 +5,20 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED
 from datetime import datetime, timedelta
-from random import shuffle
-import asyncio
 import random
 from collections import defaultdict
-from keyboards.user_buttons import meeting_question_kb
-from sqlalchemy import select, or_, and_, func
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import select, or_, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from globals import job_context
 from aiogram import Bot
-from aiogram.fsm.state import State, StatesGroup
 
 from config import MOSCOW_TZ
-from database.models import User, Pair, Setting, Feedback
+from database.models import User, Pair, Setting
 from dotenv import load_dotenv
-from services.admin_service import notify_users_about_pairs
-
+from services.admin_service import (feedback_dispatcher_job,
+                                    notify_users_about_pairs)
+from services.constants import DATE_TIME_FORMAT
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +40,6 @@ scheduler = AsyncIOScheduler(
 #     )
 
 current_interval = None
-
-
-class CommentStates(StatesGroup):
-    waiting_for_comment = State()
 
 
 async def feedback_dispatcher_wrapper():
@@ -201,47 +194,6 @@ async def auto_pairing(session_maker, bot: Bot):
 
         await notify_users_about_pairs(session, pairs, bot)
 
-async def save_comment(
-    telegram_id: int,
-    comment_text: str,
-    session_maker: async_sessionmaker,
-    pair_id: int,
-    force_update: bool = False
-) -> str:
-    async with session_maker() as session:
-        result_user = await session.execute(
-            select(User).where(User.telegram_id == telegram_id)
-        )
-        user = result_user.scalar()
-        if user is None:
-            return f"Пользователь с telegram_id {telegram_id} не найден"
-
-        user_id = user.id
-
-        result_feedback = await session.execute(
-            select(Feedback).where(Feedback.user_id == user_id, Feedback.pair_id == pair_id)
-        )
-        feedback = result_feedback.scalar()
-
-        if feedback:
-            feedback.comment = comment_text
-            feedback.submitted_at = datetime.utcnow()
-            feedback.did_meet = True
-            status_msg = "Комментарий обновлён ✅" if force_update else "Комментарий добавлен ✅"
-        else:
-            new_feedback = Feedback(
-                pair_id=pair_id,
-                user_id=user_id,
-                comment=comment_text,
-                did_meet=True,
-                submitted_at=datetime.utcnow()
-            )
-            session.add(new_feedback)
-            status_msg = "Спасибо за комментарий ✅"
-
-        await session.commit()
-        return status_msg
-
 
 # отображение для консоли его в проде не будет
 def show_next_runs(scheduler: AsyncIOScheduler):
@@ -250,7 +202,7 @@ def show_next_runs(scheduler: AsyncIOScheduler):
     for job in scheduler.get_jobs():
         next_run_utc = job.next_run_time
         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-        logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M по МСК') if next_run_msk else 'нет запланированного запуска'}")
+        logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime(DATE_TIME_FORMAT) if next_run_msk else 'нет запланированного запуска'}")
 
 
 def get_next_pairing_date() -> str | None:
@@ -263,7 +215,7 @@ def get_next_pairing_date() -> str | None:
     if job:
         next_run_utc = job.next_run_time
         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-        next_run_str = next_run_msk.strftime('%Y-%m-%d %H:%M по МСК')
+        next_run_str = next_run_msk.strftime(DATE_TIME_FORMAT)
         logger.debug(f"🛠 Задача '{job.id}' запустится: {next_run_str}")
         return next_run_str
     return None
@@ -274,50 +226,8 @@ def job_listener(event):
     show_next_runs(scheduler)
 
 
-async def feedback_dispatcher_job(bot: Bot, session_maker):
-    async with session_maker() as session:
-        result_pairs = await session.execute(
-            select(Pair).where(Pair.feedback_sent.is_(False))
-        )
-        pairs = result_pairs.scalars().all()
-
-        if not pairs:
-            logger.info("ℹ️ Нет новых пар для отправки опроса.")
-            return
-
-        for pair in pairs:
-            user_ids = [pair.user1_id, pair.user2_id]
-            if pair.user3_id:
-                user_ids.append(pair.user3_id)
-
-            result_users = await session.execute(
-                select(User).where(User.id.in_(user_ids),
-                                   User.has_permission.is_(True))
-            )
-            users = result_users.scalars().all()
-
-            kb = meeting_question_kb(pair.id)
-            success = True
-            for user in users:
-                try:
-                    await bot.send_message(
-                        user.telegram_id,
-                        "Привет! Прошла ли встреча?",
-                        reply_markup=kb
-                    )
-                    await asyncio.sleep(0.05)
-                except Exception as e:
-                    logger.info(f"⚠️ Не удалось отправить опрос для {user.telegram_id}: {e}")
-                    success = False  # хотя бы одному не отправили
-
-            # Отмечаем только если всем отправлено успешно
-            if success:
-                pair.feedback_sent = True
-
-        await session.commit()
-
 async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing):
-    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)
+    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(minutes=3)
     return start_date_for_feedback_dispatcher
 
 async def schedule_feedback_jobs(session_maker):
@@ -359,7 +269,7 @@ async def schedule_feedback_jobs(session_maker):
 
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(days=interval_days, start_date=effective_start),
+            trigger=IntervalTrigger(minutes=interval_days, start_date=effective_start),
             id=job_id,
             replace_existing=True,
             misfire_grace_time=172800,  # 2 дня

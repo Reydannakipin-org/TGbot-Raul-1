@@ -5,7 +5,7 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, ForceReply, Message
 from gspread.exceptions import (
     APIError,
     SpreadsheetNotFound,
@@ -86,17 +86,18 @@ async def process_find_user_by_telegram_id(message: Message,
                 return
             await adm.reset_user_pause_until(session, user)
     except SQLAlchemyError:
-        logger.error('Ошибка при работе с базой данных')
+        logger.exception('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
-
-    logger.debug(f'Пользователь {user_telegram_id} найден.')
-    data_text = adm.format_text_about_user(
-        ADMIN_TEXTS['finding_user_success'], user)
-    ikb_participant_management = generate_inline_manage(
-        user_telegram_id, user.has_permission)
-    await message.answer(data_text,
-                        reply_markup=ikb_participant_management)
-    await state.clear()
+        return
+    else:
+        logger.debug(f'Пользователь {user_telegram_id} найден.')
+        data_text = adm.format_text_about_user(
+            ADMIN_TEXTS['finding_user_success'], user)
+        ikb_participant_management = generate_inline_manage(
+            user_telegram_id, user.has_permission)
+        await message.answer(data_text,
+                             reply_markup=ikb_participant_management)
+        await state.clear()
 
 
 @admin_router.message(StateFilter(FSMAdminPanel.waiting_for_telegram_id),
@@ -137,6 +138,8 @@ async def process_warning_not_numbers(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от админа цифры в качестве
     telegram ID, но получаем не цифры. Просим админа ввести заново.
     """
+    if message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
     logger.debug('Админ прислал в качестве телеграм ID не цифры.')
     await message.answer(ADMIN_TEXTS['warning_not_numbers'])
 
@@ -505,6 +508,8 @@ async def process_wrong_date_for_pause(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от админа дату , до
     которой юзера нужно поставить на паузу, но получаем некорректные данные.
     """
+    if message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
     logger.info('Получены неверные данные в качестве даты.')
     await message.answer(ADMIN_TEXTS['wrong_date_for_pause'])
 
@@ -708,6 +713,10 @@ async def process_get_text_of_notification(message: Message,
     if not message.text:
         await message.answer(ADMIN_TEXTS['reject_no_text'])
         return
+    elif message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
+        await message.answer(ADMIN_TEXTS['ask_text_for_notif'])
+        return
     else:
         received_text = message.text.strip()
     try:
@@ -781,7 +790,7 @@ async def process_cancel_notif(callback: CallbackQuery):
         await callback.message.edit_text(ADMIN_TEXTS['notif_is_canceled'])
 
 
-@admin_router.message(F.text)
+@admin_router.message(F.text, StateFilter(default_state))
 async def fallback_handler(message: Message):
     """
     Хэндлер срабатывает, когда админ отправляет неизвестную команду или текст.
@@ -791,7 +800,7 @@ async def fallback_handler(message: Message):
                          reply_markup=buttons_kb_admin)
 
 
-@admin_router.message()
+@admin_router.message(StateFilter(default_state))
 async def other_type_handler(message: Message):
     """
     Хэндлер срабатывает, когда админ отправляет что-то кроме текста,
