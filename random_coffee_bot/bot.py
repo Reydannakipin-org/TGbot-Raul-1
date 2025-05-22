@@ -24,22 +24,22 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-# load_dotenv()
-#
-# DATABASE_URL = os.getenv("DATABASE_URL").replace("+asyncpg", "+psycopg")
-#
-# # подлкючение для постгресса
-# scheduler = AsyncIOScheduler(
-#     jobstores={
-#         'default': SQLAlchemyJobStore(url=DATABASE_URL)
-#     },
-#     timezone='UTC'
-# )
-# пусть пока тут будет когда будет постгрес тогда будет видно где лучше быть
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL").replace("+asyncpg", "+psycopg")
+
+# подлкючение для постгресса
 scheduler = AsyncIOScheduler(
-        jobstores={'default': SQLAlchemyJobStore(url='sqlite:///jobs.sqlite')},
-        timezone='Europe/Moscow'
-    )
+    jobstores={
+        'default': SQLAlchemyJobStore(url=DATABASE_URL)
+    },
+    timezone='UTC'
+)
+# пусть пока тут будет когда будет постгрес тогда будет видно где лучше быть
+# scheduler = AsyncIOScheduler(
+#         jobstores={'default': SQLAlchemyJobStore(url='sqlite:///jobs.sqlite')},
+#         timezone='Europe/Moscow'
+#     )
 
 current_interval = None
 
@@ -173,16 +173,16 @@ async def generate_unique_pairs(session, users: list[User]) -> list[Pair]:
         u1, u2 = user_map[u1_id], user_map[u2_id]
         pair = Pair(
             user1_id=u1.id, user2_id=u2.id,
-            paired_at=datetime.now(ZoneInfo("Europe/Moscow"))
+            paired_at=datetime.utcnow()
         )
-        u1.last_paired_at = datetime.now(ZoneInfo("Europe/Moscow"))
-        u2.last_paired_at = datetime.now(ZoneInfo("Europe/Moscow"))
+        u1.last_paired_at = datetime.utcnow()
+        u2.last_paired_at = datetime.utcnow()
         session.add(pair)
         pair_objs.append(pair)
 
     if remaining:
         odd = user_map[remaining[0]]
-        odd.last_paired_at = datetime.now(ZoneInfo("Europe/Moscow"))
+        odd.last_paired_at = datetime.utcnow()
         if pair_objs:
             last_pair = pair_objs[-1]
             last_pair.user3_id = odd.id
@@ -314,20 +314,20 @@ async def save_comment(
 
 
 # отображение для консоли его в проде не будет
-# def show_next_runs(scheduler: AsyncIOScheduler):
-#     logger.debug("🔔 Расписание ближайших запусков задач:")
-#
-#     for job in scheduler.get_jobs():
-#         next_run_utc = job.next_run_time
-#         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-#         logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M:%S') if next_run_msk else 'нет запланированного запуска'}")
-#
 def show_next_runs(scheduler: AsyncIOScheduler):
-    print("🔔 Расписание ближайших запусков задач:")
+    logger.debug("🔔 Расписание ближайших запусков задач:")
 
     for job in scheduler.get_jobs():
-        next_run = job.next_run_time
-        print(f"🛠 Задача '{job.id}' запустится в: {next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else 'нет запланированного запуска'}")
+        next_run_utc = job.next_run_time
+        next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
+        logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime('%Y-%m-%d %H:%M:%S') if next_run_msk else 'нет запланированного запуска'}")
+
+# def show_next_runs(scheduler: AsyncIOScheduler):
+#     print("🔔 Расписание ближайших запусков задач:")
+#
+#     for job in scheduler.get_jobs():
+#         next_run = job.next_run_time
+#         print(f"🛠 Задача '{job.id}' запустится в: {next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else 'нет запланированного запуска'}")
 def get_next_pairing_date() -> str | None:
     """
     Возвращает дату, когда состоится следующее формирование пар
@@ -407,7 +407,7 @@ def force_reschedule_job(job_id, func, interval_minutes, session_maker, start_da
 
     scheduler.add_job(
         func,
-        trigger=IntervalTrigger(minutes=interval_minutes, start_date=effective_start, timezone=tz),
+        trigger=IntervalTrigger(days=interval_minutes, start_date=effective_start, timezone=tz),
         id=job_id,
         replace_existing=True,
         misfire_grace_time=172800,
@@ -422,17 +422,18 @@ def schedule_or_reschedule(job_id, func, interval_minutes, session_maker, start_
     effective_start = (start_date or now).astimezone(tz)
 
     if job:
-        current_job_interval = job.trigger.interval.total_seconds() // 60
+        current_job_interval = job.trigger.interval.days
+        #current_job_interval = job.trigger.interval.total_seconds() // 60
         if int(current_job_interval) != interval_minutes:
             next_run_time = getattr(job, "next_run_time", None)
             if next_run_time:
-                new_start_date = next_run_time + timedelta(minutes=int(interval_minutes))
+                new_start_date = next_run_time + timedelta(days=int(interval_minutes))
             else:
                 new_start_date = effective_start
 
             scheduler.modify_job(
                 job_id,
-                trigger=IntervalTrigger(minutes=interval_minutes, start_date=new_start_date, timezone=tz)
+                trigger=IntervalTrigger(days=interval_minutes, start_date=new_start_date, timezone=tz)
             )
             print(
                 f"🕒 '{job_id}' будет перезапущена с новым интервалом {interval_minutes} мин начиная с {new_start_date}")
@@ -441,7 +442,7 @@ def schedule_or_reschedule(job_id, func, interval_minutes, session_maker, start_
     else:
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(minutes=interval_minutes, start_date=effective_start, timezone=tz),
+            trigger=IntervalTrigger(days=interval_minutes, start_date=effective_start, timezone=tz),
             id=job_id,
             replace_existing=True,
             misfire_grace_time=172800,
@@ -493,8 +494,7 @@ async def schedule_feedback_jobs(session_maker):
             else datetime.now(ZoneInfo("Europe/Moscow"))
         )
 
-        pairing_day = interval_minutes * 1
-
+        pairing_day = interval_minutes * 7
 
     if not scheduler.running:
         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
@@ -514,7 +514,7 @@ async def schedule_feedback_jobs(session_maker):
     schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, session_maker,
                            start_date=start_date_for_feedback_dispatcher)
 
-    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 3, session_maker,
+    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, session_maker,
                            start_date=start_date_for_auto_pairing)
 
     show_next_runs(scheduler)
