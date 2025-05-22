@@ -167,6 +167,9 @@ docker compose version
 
 
 Авторы проекта:
+
 [Дуплинская Татьяна](https://github.com/tatiana-dup)
+
 [Горбунов Игорь](https://github.com/boss2004)
+
 [Никифоров Андрей](https://github.com/Andrey232322)
