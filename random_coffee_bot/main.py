@@ -50,9 +50,9 @@ async def main():
     dp.include_router(common_router)
 
     #  На случай, если нужно будет запланировать все задачи с чистого листа.
-    scheduler.start()
-    scheduler.remove_all_jobs()
-    await set_first_pairing_date(datetime(2025, 5, 21, 13, 00))
+    # scheduler.start()
+    # scheduler.remove_all_jobs()
+    # await set_first_pairing_date(datetime(2025, 5, 23, 11, 55))
     await schedule_feedback_jobs(session_maker)
 
     await dp.start_polling(bot)

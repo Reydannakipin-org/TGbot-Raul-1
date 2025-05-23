@@ -28,7 +28,7 @@ from keyboards.admin_buttons import (buttons_kb_admin,
                                      PageCallbackFactory,
                                      UsersCallbackFactory)
 from services import admin_service as adm
-from services.constants import DATE_FORMAT
+from services.constants import DATE_FORMAT, DATE_TIME_FORMAT
 from services.user_service import get_user_by_telegram_id
 from states.admin_states import FSMAdminPanel
 from texts import ADMIN_TEXTS, KEYBOARD_BUTTON_TEXTS
@@ -533,7 +533,7 @@ async def process_button_change_interval(message: Message):
         logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
 
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['confirm_changing_interval'],
@@ -583,7 +583,7 @@ async def process_set_new_interval(callback: CallbackQuery):
         logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['success_new_interval'],
         current_interval, next_pairing_date)
@@ -607,7 +607,7 @@ async def process_cancel_changing_interval(callback: CallbackQuery):
         logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['cancel_changing_interval'],
         current_interval, next_pairing_date)
@@ -690,7 +690,7 @@ async def process_get_info(message: Message):
         logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
 
     extra_data = {
         'all_users': number_of_users,
@@ -810,75 +810,77 @@ async def pause_pairing_handler(message: Message, session_maker):
             session.add(setting_obj)
 
         await session.commit()
-    await message.answer("🛑 Формирование пар временно приостановлено.")
+    await message.answer("🛑 Формирование пар приостановлено. Для возобновления отправьте команду /resume_pairing")
+
 
 # Возобновить создание пар лучше использовать это, тут нельзя указать когда запустить бота но он продолжит в том интеравале какой был
-# @user_router.message(Command("resume_pairing"))
-# async def resume_pairing_handler(message: Message, session_maker):
-#     async with session_maker() as session:
-#         setting = await session.execute(select(Setting))
-#         setting_obj = setting.scalar_one_or_none()
-#
-#         if setting_obj and setting_obj.auto_pairing_paused:
-#             setting_obj.auto_pairing_paused = False
-#             await session.commit()
-#             await message.reply("✅ Формирование пар возобновлено.")
-#         else:
-#             await message.reply("ℹ️ Формирование пар и так активно.")
-
-
-class ResumePairingStates(StatesGroup):
-    waiting_for_days_input = State()
-
-
 @admin_router.message(Command("resume_pairing"), StateFilter(default_state))
-async def resume_pairing_start(message: Message, state: FSMContext):
-    await message.answer("📆 Через сколько дней возобновить формирование пар? Введи число от 0 до 30:")
-    await state.set_state(ResumePairingStates.waiting_for_days_input)
-
-# Возобновить создание пар, feedback_dispatcher не будет запушен за 3 дня до формирования пар если не попасть в тайминг
-@admin_router.message(ResumePairingStates.waiting_for_days_input)
-async def process_days_input(message: Message, state: FSMContext, session_maker):
-    try:
-        days = int(message.text.strip())
-        if days < 0 or days > 30:
-            await message.answer("⛔ Введи число от 0 до 30.")
-            return
-    except ValueError:
-        await message.answer("⛔ Пожалуйста, введи целое число.")
-        return
-
+async def resume_pairing_handler(message: Message, session_maker):
     async with session_maker() as session:
-        result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
-        setting = result.scalar_one_or_none()
+        setting = await session.execute(select(Setting))
+        setting_obj = setting.scalar_one_or_none()
+
+        if setting_obj and setting_obj.auto_pairing_paused:
+            setting_obj.auto_pairing_paused = False
+            await session.commit()
+            await message.reply("✅ Формирование пар возобновлено.")
+        else:
+            await message.reply("ℹ️ Формирование пар и так активно.")
 
 
-        if not setting.auto_pairing_paused:
-            await message.answer("ℹ️ Формирование пар уже активно.")
-            await state.clear()
-            return
+# class ResumePairingStates(StatesGroup):
+#     waiting_for_days_input = State()
 
-        setting.auto_pairing_paused = False
-        setting.first_matching_date = datetime.now(ZoneInfo("Europe/Moscow")) + timedelta(days=days)
-        await session.commit()
 
-        start_date = setting.first_matching_date
-        interval_minutes = int(setting.value)
-        pairing_day = interval_minutes * 7
+# @admin_router.message(Command("resume_pairing"), StateFilter(default_state))
+# async def resume_pairing_start(message: Message, state: FSMContext):
+#     await message.answer("📆 Через сколько дней возобновить формирование пар? Введи число от 4 до 30:")
+#     await state.set_state(ResumePairingStates.waiting_for_days_input)
 
-        force_reschedule_job(
-            job_id="auto_pairing_weekly",
-            func=auto_pairing_wrapper,
-            interval_minutes=pairing_day,
-            session_maker=session_maker,
-            start_date=start_date
-        )
 
-        await message.answer(
-            f"✅ Формирование пар возобновлено. Следующий запуск через {days} дней: {start_date.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+# # Возобновить создание пар, feedback_dispatcher не будет запушен за 3 дня до формирования пар если не попасть в тайминг
+# @admin_router.message(ResumePairingStates.waiting_for_days_input)
+# async def process_days_input(message: Message, state: FSMContext, session_maker):
+#     try:
+#         days = int(message.text.strip())
+#         if days < 4 or days > 30:
+#             await message.answer("⛔ Введи число от 4 до 30.")
+#             return
+#     except ValueError:
+#         await message.answer("⛔ Пожалуйста, введи целое число.")
+#         return
 
-    await state.clear()
+#     async with session_maker() as session:
+#         result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
+#         setting = result.scalar_one_or_none()
+
+
+#         if not setting.auto_pairing_paused:
+#             await message.answer("ℹ️ Формирование пар уже активно.")
+#             await state.clear()
+#             return
+
+#         setting.auto_pairing_paused = False
+#         setting.first_matching_date = datetime.utcnow() + timedelta(minutes=days)
+#         await session.commit()
+
+#         start_date = setting.first_matching_date
+#         interval_minutes = int(setting.value)
+#         pairing_day = interval_minutes * 7
+
+#         force_reschedule_job(
+#             job_id="auto_pairing_weekly",
+#             func=auto_pairing_wrapper,
+#             interval_minutes=pairing_day,
+#             session_maker=session_maker,
+#             start_date=start_date
+#         )
+
+#         await message.answer(
+#             f"✅ Формирование пар возобновлено. Следующий запуск: {start_date.strftime(DATE_TIME_FORMAT)}"
+#         )
+
+#     await state.clear()
 
 
 @admin_router.message(F.text, StateFilter(default_state))

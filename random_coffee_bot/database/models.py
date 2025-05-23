@@ -105,6 +105,7 @@ class Setting(Base):
     first_matching_date = Column(DateTime, default=datetime(2025, 5, 15, 10, 0))
     auto_pairing_paused = Column(Boolean, default=False)
 
+
 class Notification(CommonMixin, Base):
     """Таблица для текстов рассылки от админа."""
 
