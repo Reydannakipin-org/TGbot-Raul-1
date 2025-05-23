@@ -55,7 +55,7 @@ async def main():
     #  На случай, если нужно будет запланировать все задачи с чистого листа.
     # scheduler.start()
     # scheduler.remove_all_jobs()
-    await set_first_pairing_date(datetime(2025, 5, 15, 7, 00))
+    # await set_first_pairing_date(datetime(2025, 5, 23, 11, 55))
     await schedule_feedback_jobs(session_maker)
 
     await dp.start_polling(bot)

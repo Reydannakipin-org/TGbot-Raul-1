@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import default_state
+from aiogram.fsm.state import default_state, StatesGroup, State
 from aiogram.types import CallbackQuery, Message
 from gspread.exceptions import (
     APIError,
@@ -14,7 +14,7 @@ from gspread.exceptions import (
 from oauth2client.client import HttpAccessTokenRefreshError
 from sqlalchemy.exc import SQLAlchemyError
 
-from bot import get_next_pairing_date
+from bot import get_next_pairing_date, auto_pairing_wrapper, force_reschedule_job
 from database.db import AsyncSessionLocal
 from filters.admin_filters import (
     AdminMessageFilter,
@@ -33,10 +33,14 @@ from keyboards.admin_buttons import (
     UsersCallbackFactory
 )
 from services import admin_service as adm
-from services.constants import DATE_FORMAT
+from services.constants import DATE_FORMAT, DATE_TIME_FORMAT
 from services.user_service import get_user_by_telegram_id
 from states.admin_states import FSMAdminPanel
 from texts import ADMIN_TEXTS, KEYBOARD_BUTTON_TEXTS
+
+from zoneinfo import ZoneInfo
+from sqlalchemy import select
+from database.models import Setting
 
 
 logger = logging.getLogger(__name__)
@@ -93,7 +97,7 @@ async def process_find_user_by_telegram_id(message: Message,
                 return
             await adm.reset_user_pause_until(session, user)
     except SQLAlchemyError:
-        logger.error('Ошибка при работе с базой данных')
+        logger.exception('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
     logger.debug(f'Пользователь {user_telegram_id} найден.')
@@ -133,7 +137,7 @@ async def process_get_all_users_list(message: Message, state: FSMContext):
         logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
     await message.answer(
-        text="Выберите нужного пользователя из списка:",
+        text=ADMIN_TEXTS['ask_choose_user_from_list'],
         reply_markup=kb_bilder.as_markup()
     )
     await state.clear()
@@ -146,6 +150,8 @@ async def process_warning_not_numbers(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от админа цифры в качестве
     telegram ID, но получаем не цифры. Просим админа ввести заново.
     """
+    if message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
     logger.debug('Админ прислал в качестве телеграм ID не цифры.')
     await message.answer(ADMIN_TEXTS['warning_not_numbers'])
 
@@ -167,7 +173,7 @@ async def paginate_users(callback: CallbackQuery,
             await callback.message.answer(ADMIN_TEXTS['db_error'])
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
-            text="Выберите нужного пользователя из списка:",
+            text=ADMIN_TEXTS['ask_choose_user_from_list'],
             reply_markup=kb.as_markup()
         )
     await callback.answer()
@@ -178,7 +184,7 @@ async def paginate_users(callback: CallbackQuery,
 async def show_user_details(callback: CallbackQuery,
                             callback_data: UsersCallbackFactory):
     """
-    Хэндлре срабатывает, когда админ нажимает на инлайн-кнопку с
+    Хэндлер срабатывает, когда админ нажимает на инлайн-кнопку с
     именем пользователя в списке пользователей.
     """
     user_telegram_id = callback_data.telegram_id
@@ -518,6 +524,8 @@ async def process_wrong_date_for_pause(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от админа дату , до
     которой юзера нужно поставить на паузу, но получаем некорректные данные.
     """
+    if message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
     logger.info('Получены неверные данные в качестве даты.')
     await message.answer(ADMIN_TEXTS['wrong_date_for_pause'])
 
@@ -537,7 +545,7 @@ async def process_button_change_interval(message: Message):
         logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
 
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['confirm_changing_interval'],
@@ -587,7 +595,7 @@ async def process_set_new_interval(callback: CallbackQuery):
         logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['success_new_interval'],
         current_interval, next_pairing_date)
@@ -611,7 +619,7 @@ async def process_cancel_changing_interval(callback: CallbackQuery):
         logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['cancel_changing_interval'],
         current_interval, next_pairing_date)
@@ -694,7 +702,7 @@ async def process_get_info(message: Message):
         logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
 
     extra_data = {
         'all_users': number_of_users,
@@ -721,8 +729,13 @@ async def process_get_text_of_notification(message: Message,
     if not message.text:
         await message.answer(ADMIN_TEXTS['reject_no_text'])
         return
+    elif message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
+        await message.answer(ADMIN_TEXTS['ask_text_for_notif'])
+        return
     else:
-        received_text = message.text.strip()
+        logger.info(f'получен текст для рассылки: {message.html_text}')
+        received_text = message.html_text
     try:
         async with AsyncSessionLocal() as session:
             notif = await adm.create_notif(session, received_text)
@@ -734,7 +747,7 @@ async def process_get_text_of_notification(message: Message,
                     .format(notif_text=notif.text))
     inline_kb = generate_inline_notification_options(notif.id)
     await state.clear()
-    await message.answer(confirm_text, reply_markup=inline_kb)
+    await message.answer(confirm_text, reply_markup=inline_kb, parse_mode='HTML')
 
 
 @admin_router.callback_query(lambda c: c.data.startswith('confirm_notif:'),
@@ -757,7 +770,8 @@ async def process_send_notif(callback: CallbackQuery, bot: Bot):
         return
     if isinstance(callback.message, Message):
         await callback.message.edit_text(ADMIN_TEXTS['start_sending_notif']
-                                         .format(notif_text=notif.text))
+                                         .format(notif_text=notif.text),
+                                         parse_mode='HTML')
     try:
         delivered_notif, reason = await adm.broadcast_notif_to_active_users(
             bot, notif)
@@ -794,7 +808,94 @@ async def process_cancel_notif(callback: CallbackQuery):
         await callback.message.edit_text(ADMIN_TEXTS['notif_is_canceled'])
 
 
-@admin_router.message(F.text)
+# Приостановить создание пар
+@admin_router.message(Command("pause_pairing"), StateFilter(default_state))
+async def pause_pairing_handler(message: Message, session_maker):
+    async with session_maker() as session:
+        setting = await session.execute(select(Setting))
+        setting_obj = setting.scalar_one_or_none()
+
+        if setting_obj:
+            setting_obj.auto_pairing_paused = True
+        else:
+            setting_obj = Setting(auto_pairing_paused=True)
+            session.add(setting_obj)
+
+        await session.commit()
+    await message.answer("🛑 Формирование пар приостановлено. Для возобновления отправьте команду /resume_pairing")
+
+
+# Возобновить создание пар лучше использовать это, тут нельзя указать когда запустить бота но он продолжит в том интеравале какой был
+@admin_router.message(Command("resume_pairing"), StateFilter(default_state))
+async def resume_pairing_handler(message: Message, session_maker):
+    async with session_maker() as session:
+        setting = await session.execute(select(Setting))
+        setting_obj = setting.scalar_one_or_none()
+
+        if setting_obj and setting_obj.auto_pairing_paused:
+            setting_obj.auto_pairing_paused = False
+            await session.commit()
+            await message.reply("✅ Формирование пар возобновлено.")
+        else:
+            await message.reply("ℹ️ Формирование пар и так активно.")
+
+
+# class ResumePairingStates(StatesGroup):
+#     waiting_for_days_input = State()
+
+
+# @admin_router.message(Command("resume_pairing"), StateFilter(default_state))
+# async def resume_pairing_start(message: Message, state: FSMContext):
+#     await message.answer("📆 Через сколько дней возобновить формирование пар? Введи число от 4 до 30:")
+#     await state.set_state(ResumePairingStates.waiting_for_days_input)
+
+
+# # Возобновить создание пар, feedback_dispatcher не будет запушен за 3 дня до формирования пар если не попасть в тайминг
+# @admin_router.message(ResumePairingStates.waiting_for_days_input)
+# async def process_days_input(message: Message, state: FSMContext, session_maker):
+#     try:
+#         days = int(message.text.strip())
+#         if days < 4 or days > 30:
+#             await message.answer("⛔ Введи число от 4 до 30.")
+#             return
+#     except ValueError:
+#         await message.answer("⛔ Пожалуйста, введи целое число.")
+#         return
+
+#     async with session_maker() as session:
+#         result = await session.execute(select(Setting).where(Setting.key == "global_interval"))
+#         setting = result.scalar_one_or_none()
+
+
+#         if not setting.auto_pairing_paused:
+#             await message.answer("ℹ️ Формирование пар уже активно.")
+#             await state.clear()
+#             return
+
+#         setting.auto_pairing_paused = False
+#         setting.first_matching_date = datetime.utcnow() + timedelta(minutes=days)
+#         await session.commit()
+
+#         start_date = setting.first_matching_date
+#         interval_minutes = int(setting.value)
+#         pairing_day = interval_minutes * 7
+
+#         force_reschedule_job(
+#             job_id="auto_pairing_weekly",
+#             func=auto_pairing_wrapper,
+#             interval_minutes=pairing_day,
+#             session_maker=session_maker,
+#             start_date=start_date
+#         )
+
+#         await message.answer(
+#             f"✅ Формирование пар возобновлено. Следующий запуск: {start_date.strftime(DATE_TIME_FORMAT)}"
+#         )
+
+#     await state.clear()
+
+
+@admin_router.message(F.text, StateFilter(default_state))
 async def fallback_handler(message: Message):
     """
     Хэндлер срабатывает, когда админ отправляет неизвестную команду или текст.
@@ -802,9 +903,8 @@ async def fallback_handler(message: Message):
     logger.info('Админ отправил неизвестную команду.')
     await message.answer(ADMIN_TEXTS['admin_unknown_command'],
                          reply_markup=buttons_kb_admin)
-
-
-@admin_router.message()
+    
+@admin_router.message(StateFilter(default_state))
 async def other_type_handler(message: Message):
     """
     Хэндлер срабатывает, когда админ отправляет что-то кроме текста,
