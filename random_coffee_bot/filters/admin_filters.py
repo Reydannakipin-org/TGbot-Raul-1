@@ -6,7 +6,6 @@ from services.user_service import get_user_by_telegram_id
 
 
 config = load_config()
-admin_id = config.tg_bot.admin_tg_id
 admins_list = config.tg_bot.admins_list
 
 

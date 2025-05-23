@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
 
-# Этот класс используется, пока мы работаем с SQLite.
 @dataclass
 class DatabaseConfig:
     db_url: str
@@ -16,7 +15,6 @@ class DatabaseConfig:
 @dataclass
 class TgBot:
     token: str
-    admin_tg_id: int
     group_tg_id: int
     admins_list: list
 
@@ -35,15 +33,13 @@ class Config:
 
 def load_config(path: str | None = None) -> Config:
     env: Env = Env()
-    # Указываем путь к .env внутри random_coffee_bot
     default_path = Path(__file__).resolve().parent / '.env'
     env.read_env(path or default_path)
 
     return Config(
         tg_bot=TgBot(
             token=env('BOT_TOKEN'),
-            admin_tg_id=env.int('ADMIN_TELEGRAM_ID'),
-            group_tg_id=env.int('TELEGRAM_ID_TEST_GROUP'),
+            group_tg_id=env.int('TELEGRAM_ID_PROJECT_GROUP'),
             admins_list=env.list('ADMIN_ID_LIST', subcast=int)
         ),
         db=DatabaseConfig(

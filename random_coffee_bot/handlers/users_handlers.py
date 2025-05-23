@@ -7,6 +7,7 @@ from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from apscheduler.events import EVENT_JOB_EXECUTED
@@ -113,6 +114,11 @@ async def process_first_name_sending(message: Message, state: FSMContext):
     user_telegram_id = message.from_user.id
 
     first_name = message.text.strip()
+
+    if len(first_name) > 30:
+        logger.debug('Получено слишком длинное имя')
+        return await message.answer('Слишком длинное имя. Введи имя короче 30 символов.')
+
     logger.debug(f'Получено сообщение в качестве имени: {first_name}')
 
     try:
@@ -158,6 +164,10 @@ async def process_last_name_sending(message: Message, state: FSMContext):
     user_telegram_id = message.from_user.id
 
     last_name = message.text.strip()
+    if len(last_name) > 30:
+        logger.debug('Получено слишком длинная фамилия')
+        return await message.answer('Слишком длинная фамилия. Введи фамилию короче 30 символов.')
+
     logger.debug(f'Получено сообщение в качестве фамилии: {last_name}')
 
     try:

@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 button_info = KeyboardButton(
-    text=KEYBOARD_BUTTON_TEXTS['button_info']
-)
+    text=KEYBOARD_BUTTON_TEXTS['button_info'])
 button_list_participants = KeyboardButton(
     text=KEYBOARD_BUTTON_TEXTS['button_list_participants'])
 button_participant_management = KeyboardButton(
@@ -30,9 +29,9 @@ button_google_sheets = KeyboardButton(
 button_change_interval = KeyboardButton(
     text=KEYBOARD_BUTTON_TEXTS['button_change_interval'])
 button_send_notification = KeyboardButton(
-    text=KEYBOARD_BUTTON_TEXTS['button_send_notification']
-)
-
+    text=KEYBOARD_BUTTON_TEXTS['button_send_notification'])
+button_on_off = KeyboardButton(
+    text=KEYBOARD_BUTTON_TEXTS['button_on_off'])
 
 buttons_kb_builder_admin = ReplyKeyboardBuilder()
 
@@ -42,6 +41,7 @@ buttons_kb_builder_admin.row(
     button_google_sheets,
     button_change_interval,
     button_send_notification,
+    button_on_off,
     width=1
 )
 
@@ -225,3 +225,37 @@ async def generate_inline_user_list(page: int = 1) -> InlineKeyboardBuilder:
 
     kb.adjust(1)
     return kb
+
+
+def generate_inline_pairing_off():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['yes'],
+                callback_data=(
+                    'confirm_pairing_off')
+            ),
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['no'],
+                callback_data=(
+                    'cancel_changing_pairing_status')
+            )
+        ]
+    ])
+
+
+def generate_inline_pairing_on():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['yes'],
+                callback_data=(
+                    'confirm_pairing_on')
+            ),
+            InlineKeyboardButton(
+                text=INLINE_BUTTON_TEXTS['no'],
+                callback_data=(
+                    'cancel_changing_pairing_status')
+            )
+        ]
+    ])
