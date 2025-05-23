@@ -281,7 +281,8 @@ def schedule_or_reschedule(job_id, func, interval_minutes, session_maker,
     if job:
         # current_job_interval = job.trigger.interval.days()
         current_job_interval = job.trigger.interval.total_seconds() // 60
-        if int(current_job_interval) != interval_minutes:
+        if (int(current_job_interval) != interval_minutes or
+                job.misfire_grace_time != misfire_grace_time):
             next_run_time = getattr(job, "next_run_time", None)
             if next_run_time:
                 new_start_date = next_run_time + timedelta(minutes=int(interval_minutes))
@@ -290,12 +291,13 @@ def schedule_or_reschedule(job_id, func, interval_minutes, session_maker,
 
             scheduler.modify_job(
                 job_id,
-                trigger=IntervalTrigger(minutes=interval_minutes, start_date=new_start_date)
+                trigger=IntervalTrigger(minutes=interval_minutes, start_date=new_start_date),
+                misfire_grace_time=misfire_grace_time
             )
-            print(
-                f"🕒 '{job_id}' будет перезапущена с новым интервалом {interval_minutes} мин начиная с {new_start_date}")
+            logger.info(
+                f"🕒 '{job_id}' будет перезапущена с новым интервалом {interval_minutes} мин начиная с {new_start_date}, grace_time={misfire_grace_time}")
         else:
-            print(f"✅ '{job_id}' уже запланирована с интервалом {interval_minutes} мин.")
+            logger.info(f"✅ '{job_id}' уже запланирована с интервалом {interval_minutes} мин и grace_time={misfire_grace_time}")
     else:
         scheduler.add_job(
             func,
@@ -362,7 +364,7 @@ async def schedule_feedback_jobs(session_maker):
 
     start_date_for_auto_pairing = start_date
     schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, session_maker,
-                           start_date=start_date_for_auto_pairing, misfire_grace_time=172_800)
+                           start_date=start_date_for_auto_pairing, misfire_grace_time=120)  #Таня: поменяй на 172800
 
     start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(
         start_date_for_auto_pairing)

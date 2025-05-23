@@ -99,17 +99,18 @@ async def process_find_user_by_telegram_id(message: Message,
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
-
-    logger.debug(f'Пользователь {user_telegram_id} найден.')
-    data_text = adm.format_text_about_user(
-        ADMIN_TEXTS['finding_user_success'], user)
-    ikb_participant_management = generate_inline_manage(
-        user_telegram_id, user.has_permission)
-    await message.answer(
-        data_text,
-        reply_markup=ikb_participant_management
-    )
-    await state.clear()
+        return
+    else:
+        logger.debug(f'Пользователь {user_telegram_id} найден.')
+        data_text = adm.format_text_about_user(
+            ADMIN_TEXTS['finding_user_success'], user)
+        ikb_participant_management = generate_inline_manage(
+            user_telegram_id, user.has_permission)
+        await message.answer(
+            data_text,
+            reply_markup=ikb_participant_management
+        )
+        await state.clear()
 
 
 @admin_router.message(StateFilter(FSMAdminPanel.waiting_for_telegram_id),

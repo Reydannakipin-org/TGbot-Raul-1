@@ -51,7 +51,6 @@ async def main():
     dp.include_router(user_router)
     dp.include_router(common_router)
 
-
     #  На случай, если нужно будет запланировать все задачи с чистого листа.
     # scheduler.start()
     # scheduler.remove_all_jobs()
