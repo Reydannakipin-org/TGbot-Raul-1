@@ -51,7 +51,6 @@ async def process_start_command(message: Message):
     """
     Хэндлер для команды /start админа. Отправляет клавиатуру.
     """
-    logger.info('Админ отправил /start')
     await message.answer(ADMIN_TEXTS['admin_welcome'],
                          reply_markup=buttons_kb_admin)
 
@@ -65,7 +64,6 @@ async def process_participant_management(message: Message, state: FSMContext):
     участниками". Запрашивает у админа Telegram ID юзера, для которого
     хочет внести изменения. Переводит в состояние ожидания ввода ID.
     """
-    logger.info('Админ нажал "Управление участниками"')
     await message.answer(ADMIN_TEXTS['ask_user_telegram_id'])
     await state.set_state(FSMAdminPanel.waiting_for_telegram_id)
 
@@ -81,28 +79,29 @@ async def process_find_user_by_telegram_id(message: Message,
     Если такого юзера нет, просим отправить новый ID.
     """
     user_telegram_id = int(message.text)  # type: ignore
-    logger.info(f'Админ прислал ID юзера {user_telegram_id}')
+    logger.debug(f'Админ прислал ID юзера {user_telegram_id}')
 
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, user_telegram_id)
             if user is None:
-                logger.info('Пользователя с полученным ID нет в БД.')
+                logger.debug('Пользователя с полученным ID нет в БД.')
                 await message.answer(ADMIN_TEXTS['finding_user_fail'])
                 return
             await adm.reset_user_pause_until(session, user)
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
-
-    logger.info(f'Пользователь {user_telegram_id} найден.')
-    data_text = adm.format_text_about_user(
-        ADMIN_TEXTS['finding_user_success'], user)
-    ikb_participant_management = generate_inline_manage(
-        user_telegram_id, user.has_permission)
-    await message.answer(data_text,
-                        reply_markup=ikb_participant_management)
-    await state.clear()
+        return
+    else:
+        logger.debug(f'Пользователь {user_telegram_id} найден.')
+        data_text = adm.format_text_about_user(
+            ADMIN_TEXTS['finding_user_success'], user)
+        ikb_participant_management = generate_inline_manage(
+            user_telegram_id, user.has_permission)
+        await message.answer(data_text,
+                             reply_markup=ikb_participant_management)
+        await state.clear()
 
 
 @admin_router.message(StateFilter(FSMAdminPanel.waiting_for_telegram_id),
@@ -112,7 +111,6 @@ async def process_cancel(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от админа цифры в качестве
     telegram ID, но он отправляет команду /cancel.
     """
-    logger.info('Админ отменил поиск юзера.')
     await state.clear()
     await message.answer(ADMIN_TEXTS['cancel_finding_user'])
 
@@ -128,10 +126,10 @@ async def process_get_all_users_list(message: Message, state: FSMContext):
     try:
         kb_bilder = await generate_inline_user_list()
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
     await message.answer(
-        text="Выберите нужного пользователя из списка:",
+        text=ADMIN_TEXTS['ask_choose_user_from_list'],
         reply_markup=kb_bilder.as_markup()
     )
     await state.clear()
@@ -144,7 +142,9 @@ async def process_warning_not_numbers(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от админа цифры в качестве
     telegram ID, но получаем не цифры. Просим админа ввести заново.
     """
-    logger.info('Админ прислал в качестве телеграм ID не цифры.')
+    if message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
+    logger.debug('Админ прислал в качестве телеграм ID не цифры.')
     await message.answer(ADMIN_TEXTS['warning_not_numbers'])
 
 
@@ -160,12 +160,12 @@ async def paginate_users(callback: CallbackQuery,
     try:
         kb = await generate_inline_user_list(page=page)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         if isinstance(callback.message, Message):
             await callback.message.answer(ADMIN_TEXTS['db_error'])
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
-            text="Выберите нужного пользователя из списка:",
+            text=ADMIN_TEXTS['ask_choose_user_from_list'],
             reply_markup=kb.as_markup()
         )
     await callback.answer()
@@ -176,11 +176,11 @@ async def paginate_users(callback: CallbackQuery,
 async def show_user_details(callback: CallbackQuery,
                             callback_data: UsersCallbackFactory):
     """
-    Хэндлре срабатывает, когда админ нажимает на инлайн-кнопку с
+    Хэндлер срабатывает, когда админ нажимает на инлайн-кнопку с
     именем пользователя в списке пользователей.
     """
     user_telegram_id = callback_data.telegram_id
-    logger.info(f'Админ выбрал юзера {user_telegram_id}')
+    logger.debug(f'Админ выбрал юзера {user_telegram_id}')
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, user_telegram_id)
@@ -191,12 +191,11 @@ async def show_user_details(callback: CallbackQuery,
                 return
             await adm.reset_user_pause_until(session, user)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         if isinstance(callback.message, Message):
             await callback.message.answer(ADMIN_TEXTS['db_error'])
         return
 
-    logger.info(f'Пользователь {user_telegram_id} найден.')
     data_text = adm.format_text_about_user(
         ADMIN_TEXTS['finding_user_success'], user)
     ikb_participant_management = generate_inline_manage(
@@ -215,13 +214,12 @@ async def process_inline_cancel(callback: CallbackQuery):
     изменения конкретного юзера.
     """
     _, user_telegram_id = adm.parse_callback_data(callback.data)
-    logger.info(f'Админ отменил работу с юзером {user_telegram_id}')
 
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, int(user_telegram_id))
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
         return
 
@@ -248,14 +246,12 @@ async def process_set_has_permission_false(callback: CallbackQuery):
     на новое с инлайн-кнопками для подтверждения действия.
     """
     _, user_telegram_id = adm.parse_callback_data(callback.data)
-    logger.info(f'Админ нажал "Запретить пользоваться ботом" '
-                f'для юзера {user_telegram_id}')
 
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, user_telegram_id)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
     if user is None:
@@ -285,8 +281,6 @@ async def process_confirm_set_has_permission_false(callback: CallbackQuery):
     сообщение с подтверждением действия.
     """
     _, user_telegram_id = adm.parse_callback_data(callback.data)
-    logger.info(f'Админ подтвердил, что хочет запретить юзеру '
-                f'{user_telegram_id} пользоваться ботом.')
 
     try:
         async with AsyncSessionLocal() as session:
@@ -300,10 +294,9 @@ async def process_confirm_set_has_permission_false(callback: CallbackQuery):
                 await adm.set_user_permission(session, user, False)
 
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    logger.info('У юзера больше нет разрешения использовать бота.')
     data_text = adm.format_text_about_user(
         ADMIN_TEXTS['success_set_has_permission_false'], user
     )
@@ -322,13 +315,12 @@ async def process_find_user_by_telegram_id_cb(callback: CallbackQuery):
     данными юзера и инлайн-кнопками для управления им.
     """
     _, user_telegram_id = adm.parse_callback_data(callback.data)
-    logger.info(f'Админ отменил изменение юзера {user_telegram_id}')
 
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, user_telegram_id)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
     if user is None:
@@ -336,7 +328,6 @@ async def process_find_user_by_telegram_id_cb(callback: CallbackQuery):
         await callback.answer(ADMIN_TEXTS['finding_user_fail'])
         return
     else:
-        logger.info('Возвращаем админа к сообщению с инфо о юзере.')
         data_text = adm.format_text_about_user(
             ADMIN_TEXTS['finding_user_success'], user)
         ikb_participant_management = generate_inline_manage(
@@ -358,14 +349,12 @@ async def process_set_has_permission_true(callback: CallbackQuery):
     на новое с инлайн-кнопками для подтверждения действия.
     """
     _, user_telegram_id = adm.parse_callback_data(callback.data)
-    logger.info(f'Админ нажал "Разрешить пользоваться ботом" для '
-                f'юзера {user_telegram_id}')
 
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, user_telegram_id)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
     if user is None:
@@ -395,8 +384,6 @@ async def process_confirm_set_has_permission_true(callback: CallbackQuery):
     сообщение с подтверждением действия.
     """
     _, user_telegram_id = adm.parse_callback_data(callback.data)
-    logger.info(f'Админ потвердил, что хочет разрешить юзеру '
-                f'{user_telegram_id} пользоваться ботом.')
 
     try:
         async with AsyncSessionLocal() as session:
@@ -408,10 +395,9 @@ async def process_confirm_set_has_permission_true(callback: CallbackQuery):
                 return
             await adm.set_user_permission(session, user, True)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    logger.info('У юзера снова есть разрешение использовать бота.')
     data_text = adm.format_text_about_user(
         ADMIN_TEXTS['success_set_has_permission_true'], user
     )
@@ -431,13 +417,12 @@ async def process_set_pause(callback: CallbackQuery, state: FSMContext):
     Устанавливает состояние: ожидание ввода даты.
     """
     _, user_telegram_id = adm.parse_callback_data(callback.data)
-    logger.info(f'Админ нажал "Поставить на паузу" юзера {user_telegram_id}')
 
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_by_telegram_id(session, user_telegram_id)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
     if user is None:
@@ -463,7 +448,6 @@ async def process_cancel_setting_pause(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от админа цифры в качестве
     telegram ID, но он отправляет команду /cancel.
     """
-    logger.info('Админ отменил установку паузы для юзера.')
     await state.clear()
     await message.answer(ADMIN_TEXTS['cancel_setting_user_pause'])
 
@@ -492,7 +476,7 @@ async def process_check_date_for_pause(message: Message, state: FSMContext):
         return
 
     user_telegram_id = await state.get_value('user_telegram_id')
-    logger.info(f'Получен id {user_telegram_id} из данных состояния.')
+    logger.debug(f'Получен id {user_telegram_id} из данных состояния.')
     await state.clear()
 
     try:
@@ -506,16 +490,16 @@ async def process_check_date_for_pause(message: Message, state: FSMContext):
 
             if parsed_date == today:
                 await adm.set_user_pause_until(session, user, None)
-                logger.info('Пользователю убрана дата окончания паузы.')
+                logger.debug('Пользователю убрана дата окончания паузы.')
                 data_text = adm.format_text_about_user(
                     ADMIN_TEXTS['no_pause_until'], user)
             else:
                 await adm.set_user_pause_until(session, user, parsed_date)
-                logger.info('Пользователю установлена дата окончания паузы.')
+                logger.debug('Пользователю установлена дата окончания паузы.')
                 data_text = adm.format_text_about_user(
                     ADMIN_TEXTS['success_set_pause_untill'], user)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
         return
 
@@ -528,6 +512,8 @@ async def process_wrong_date_for_pause(message: Message, state: FSMContext):
     Хэндлер срабатывает в состоянии, когда мы ждем от админа дату , до
     которой юзера нужно поставить на паузу, но получаем некорректные данные.
     """
+    if message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
     logger.info('Получены неверные данные в качестве даты.')
     await message.answer(ADMIN_TEXTS['wrong_date_for_pause'])
 
@@ -540,12 +526,11 @@ async def process_button_change_interval(message: Message):
     Хэндлер срабатывает при нажатии на кнопку клавиатуры "Изменить интервал".
     Отправляет сообщение с инлайн-кнопками для подтверждения действия.
     """
-    logger.info('Админ нажал кнопку "Изменить интервал".')
     try:
         async with AsyncSessionLocal() as session:
             current_interval = await adm.get_global_interval(session)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
     next_pairing_date = get_next_pairing_date()
@@ -567,7 +552,6 @@ async def process_choose_new_interval(callback: CallbackQuery):
     новый глобальный интервал. Отправляет сообщение с инлайн-кнопка
     возможных вариантов для нового интервала.
     """
-    logger.info('Админ подтвердил, что хочет изменить интервал.')
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
             text=ADMIN_TEXTS['choose_interval'],
@@ -596,7 +580,7 @@ async def process_set_new_interval(callback: CallbackQuery):
             current_interval = await adm.set_new_global_interval(
                 session, new_interval)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
     next_pairing_date = get_next_pairing_date()
@@ -616,12 +600,11 @@ async def process_cancel_changing_interval(callback: CallbackQuery):
     """
     Срабатывает, если админ передумал менять глобальный интервал.
     """
-    logger.info('Админ отменил изменение интервала.')
     try:
         async with AsyncSessionLocal() as session:
             current_interval = await adm.get_global_interval(session)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
     next_pairing_date = get_next_pairing_date()
@@ -643,7 +626,7 @@ async def process_export_to_gsheet(message: Message, google_sheet_id):
     Параметр google_sheet_id приходит из workflow_data диспетчера, куда должен
     быть передан при инициализации из конфига.
     """
-    logger.info('Админ нажал "выгрузить в гугл-таблицу".')
+    logger.debug('Админ нажал "выгрузить в гугл-таблицу".')
     await message.answer(ADMIN_TEXTS['start_export_data'])
 
     try:
@@ -654,7 +637,7 @@ async def process_export_to_gsheet(message: Message, google_sheet_id):
         await adm.export_pairs_to_gsheet(pairs)
 
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
     except SpreadsheetNotFound:
         logger.exception('❌ Не нашёл таблицу по этому ID. '
@@ -704,7 +687,7 @@ async def process_get_info(message: Message):
             number_of_users, number_of_active_users = (
                 await adm.get_users_count(session))
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
     next_pairing_date = get_next_pairing_date()
@@ -734,20 +717,25 @@ async def process_get_text_of_notification(message: Message,
     if not message.text:
         await message.answer(ADMIN_TEXTS['reject_no_text'])
         return
+    elif message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
+        await message.answer(ADMIN_TEXTS['ask_text_for_notif'])
+        return
     else:
-        received_text = message.text.strip()
+        logger.info(f'получен текст для рассылки: {message.html_text}')
+        received_text = message.html_text
     try:
         async with AsyncSessionLocal() as session:
             notif = await adm.create_notif(session, received_text)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
         return
     confirm_text = (ADMIN_TEXTS['ask_confirm_sending_notif']
                     .format(notif_text=notif.text))
     inline_kb = generate_inline_notification_options(notif.id)
     await state.clear()
-    await message.answer(confirm_text, reply_markup=inline_kb)
+    await message.answer(confirm_text, reply_markup=inline_kb, parse_mode='HTML')
 
 
 @admin_router.callback_query(lambda c: c.data.startswith('confirm_notif:'),
@@ -759,7 +747,7 @@ async def process_send_notif(callback: CallbackQuery, bot: Bot):
         notif_id = int(notif_id_str)
         notif = await adm.get_notif(notif_id)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         if isinstance(callback.message, Message):
             await callback.message.answer(ADMIN_TEXTS['db_error'])
         return
@@ -770,12 +758,13 @@ async def process_send_notif(callback: CallbackQuery, bot: Bot):
         return
     if isinstance(callback.message, Message):
         await callback.message.edit_text(ADMIN_TEXTS['start_sending_notif']
-                                         .format(notif_text=notif.text))
+                                         .format(notif_text=notif.text),
+                                         parse_mode='HTML')
     try:
         delivered_notif, reason = await adm.broadcast_notif_to_active_users(
             bot, notif)
     except SQLAlchemyError:
-        logger.exception('Ошибка при работе с базой данных')
+        logger.error('Ошибка при работе с базой данных')
         if isinstance(callback.message, Message):
             await callback.message.answer(ADMIN_TEXTS['db_error'])
         return
@@ -891,7 +880,17 @@ async def process_days_input(message: Message, state: FSMContext, session_maker)
 
     await state.clear()
 
-@admin_router.message()
+
+@admin_router.message(F.text, StateFilter(default_state))
+async def fallback_handler(message: Message):
+    """
+    Хэндлер срабатывает, когда админ отправляет неизвестную команду или текст.
+    """
+    logger.info('Админ отправил неизвестную команду.')
+    await message.answer(ADMIN_TEXTS['admin_unknown_command'],
+                         reply_markup=buttons_kb_admin)
+    
+@admin_router.message(StateFilter(default_state))
 async def other_type_handler(message: Message):
     """
     Хэндлер срабатывает, когда админ отправляет что-то кроме текста,
@@ -899,14 +898,4 @@ async def other_type_handler(message: Message):
     """
     logger.info('Админ отправил что-то кроме текста.')
     await message.answer(ADMIN_TEXTS['admin_unknown_type_data'],
-                         reply_markup=buttons_kb_admin)
-
-
-@admin_router.message(F.text)
-async def fallback_handler(message: Message):
-    """
-    Хэндлер срабатывает, когда админ отправляет неизвестную команду или текст.
-    """
-    logger.info('Админ отправил неизвестную команду.')
-    await message.answer(ADMIN_TEXTS['admin_unknown_command'],
                          reply_markup=buttons_kb_admin)

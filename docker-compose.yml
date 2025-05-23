@@ -3,7 +3,12 @@ version: '3.8'
 services:
   db:
     image: postgres:16-alpine
-    restart: always
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     env_file: 
       - ./random_coffee_bot/.env
     volumes:
@@ -13,6 +18,7 @@ services:
 
   app:
     build: .
+    restart: unless-stopped
     working_dir: /app
     volumes:
       - .:/app
