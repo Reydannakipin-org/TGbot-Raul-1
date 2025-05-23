@@ -16,28 +16,40 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from bot import get_next_pairing_date
 from database.db import AsyncSessionLocal
-from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
-from keyboards.admin_buttons import (buttons_kb_admin,
-                                     generate_inline_manage,
-                                     generate_inline_confirm_change_interval,
-                                     generate_inline_confirm_permission_false,
-                                     generate_inline_confirm_permission_true,
-                                     generate_inline_interval_options,
-                                     generate_inline_notification_options,
-                                     generate_inline_user_list,
-                                     PageCallbackFactory,
-                                     UsersCallbackFactory)
+from filters.admin_filters import (
+    AdminMessageFilter,
+    AdminCallbackFilter
+)
+from keyboards.admin_buttons import (
+    buttons_kb_admin,
+    generate_inline_manage,
+    generate_inline_confirm_change_interval,
+    generate_inline_confirm_permission_false,
+    generate_inline_confirm_permission_true,
+    generate_inline_interval_options,
+    generate_inline_notification_options,
+    generate_inline_pairing_off,
+    generate_inline_pairing_on,
+    generate_inline_user_list,
+    PageCallbackFactory,
+    UsersCallbackFactory
+)
 from services import admin_service as adm
 from services.constants import DATE_FORMAT
 from services.user_service import get_user_by_telegram_id
 from states.admin_states import FSMAdminPanel
 from texts import ADMIN_TEXTS, KEYBOARD_BUTTON_TEXTS
 
+from sqlalchemy import select
+from database.models import Setting
+
 
 logger = logging.getLogger(__name__)
 
 
 admin_router = Router()
+
+
 admin_router.message.filter(AdminMessageFilter())
 admin_router.callback_query.filter(AdminCallbackFilter())
 
@@ -95,8 +107,10 @@ async def process_find_user_by_telegram_id(message: Message,
             ADMIN_TEXTS['finding_user_success'], user)
         ikb_participant_management = generate_inline_manage(
             user_telegram_id, user.has_permission)
-        await message.answer(data_text,
-                             reply_markup=ikb_participant_management)
+        await message.answer(
+            data_text,
+            reply_markup=ikb_participant_management
+        )
         await state.clear()
 
 
@@ -183,7 +197,9 @@ async def show_user_details(callback: CallbackQuery,
             if user is None:
                 logger.info('Пользователя с полученным ID нет в БД.')
                 if isinstance(callback.message, Message):
-                    await callback.message.answer(ADMIN_TEXTS['finding_user_fail'])
+                    await callback.message.answer(
+                        ADMIN_TEXTS['finding_user_fail']
+                    )
                 return
             await adm.reset_user_pause_until(session, user)
     except SQLAlchemyError:
@@ -213,7 +229,9 @@ async def process_inline_cancel(callback: CallbackQuery):
 
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_by_telegram_id(session, int(user_telegram_id))
+            user = await get_user_by_telegram_id(
+                session, int(user_telegram_id)
+            )
     except SQLAlchemyError:
         logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
@@ -456,7 +474,7 @@ async def process_check_date_for_pause(message: Message, state: FSMContext):
     которой юзера нужно поставить на паузу,
     и админ присылает дату в верном формате.
     """
-    parsed_date = datetime.strptime(message.text, DATE_FORMAT).date()  # type: ignore
+    parsed_date = datetime.strptime(message.text, DATE_FORMAT).date()
 
     today = date.today()
     if parsed_date < today:
@@ -529,7 +547,7 @@ async def process_button_change_interval(message: Message):
         logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
 
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['confirm_changing_interval'],
@@ -579,7 +597,7 @@ async def process_set_new_interval(callback: CallbackQuery):
         logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['success_new_interval'],
         current_interval, next_pairing_date)
@@ -603,7 +621,7 @@ async def process_cancel_changing_interval(callback: CallbackQuery):
         logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
     data_text = adm.create_text_with_interval(
         ADMIN_TEXTS['cancel_changing_interval'],
         current_interval, next_pairing_date)
@@ -686,7 +704,7 @@ async def process_get_info(message: Message):
         logger.error('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
 
-    next_pairing_date = get_next_pairing_date()
+    next_pairing_date = await get_next_pairing_date()
 
     extra_data = {
         'all_users': number_of_users,
@@ -792,6 +810,80 @@ async def process_cancel_notif(callback: CallbackQuery):
         await callback.message.edit_text(ADMIN_TEXTS['notif_is_canceled'])
 
 
+@admin_router.message(
+        F.text == KEYBOARD_BUTTON_TEXTS['button_on_off'],
+        StateFilter(default_state))
+async def process_button_on_off(message: Message):
+    try:
+        next_pairing_date = await get_next_pairing_date()
+        async with AsyncSessionLocal() as session:
+            setting = await session.execute(select(Setting))
+            setting_obj = setting.scalar_one_or_none()
+
+            if setting_obj and setting_obj.auto_pairing_paused:
+                await message.answer((f'Статус: {next_pairing_date}.\n\n'
+                                      'Возобновить формирование пар?'),
+                                     reply_markup=generate_inline_pairing_on())
+            else:
+                await message.answer(('Статус: формирование пар активно.\n\n'
+                                      'Если вы остановите, то пары не будут формироваться, пока вы не возобновите это.\n\n'
+                                      'Остановить формирование пар?'),
+                                     reply_markup=generate_inline_pairing_off())
+    except SQLAlchemyError:
+        logger.error('Ошибка при работе с базой данных')
+        if isinstance(message, Message):
+            await message.answer(ADMIN_TEXTS['db_error'])
+        return
+
+
+@admin_router.callback_query(F.data == 'confirm_pairing_off',
+                             StateFilter(default_state))
+async def pause_pairing_handler(callback: CallbackQuery):
+    try:
+        async with AsyncSessionLocal() as session:
+            setting = await session.execute(select(Setting))
+            setting_obj = setting.scalar_one_or_none()
+
+            if setting_obj and not setting_obj.auto_pairing_paused:
+                setting_obj.auto_pairing_paused = True
+                await session.commit()
+                await callback.message.edit_text("🛑 Формирование пар приостановлено.")
+            else:
+                await callback.message.edit_text("ℹ️ Формирование пар уже приостановлено.")
+    except SQLAlchemyError:
+        logger.error('Ошибка при работе с базой данных')
+        await callback.message.answer(ADMIN_TEXTS['db_error'])
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == 'confirm_pairing_on',
+                             StateFilter(default_state))
+async def resume_pairing_handler(callback: CallbackQuery):
+    try:
+        async with AsyncSessionLocal() as session:
+            setting = await session.execute(select(Setting))
+            setting_obj = setting.scalar_one_or_none()
+
+            if setting_obj and setting_obj.auto_pairing_paused:
+                setting_obj.auto_pairing_paused = False
+                await session.commit()
+                next_pairing_date = await get_next_pairing_date()
+                await callback.message.edit_text(f"✅ Формирование пар возобновлено.\n\nДата ближайшего формирования пар {next_pairing_date}")
+            else:
+                await callback.message.edit_text("ℹ️ Формирование пар уже активно.")
+    except SQLAlchemyError:
+        logger.error('Ошибка при работе с базой данных')
+        await callback.message.answer(ADMIN_TEXTS['db_error'])
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == 'cancel_changing_pairing_status',
+                             StateFilter(default_state))
+async def process_cancel_pairing_off(callback: CallbackQuery):
+    await callback.message.edit_text('Изменение статуса формирования пар отменено.')
+    await callback.answer()
+
+
 @admin_router.message(F.text, StateFilter(default_state))
 async def fallback_handler(message: Message):
     """
@@ -800,8 +892,7 @@ async def fallback_handler(message: Message):
     logger.info('Админ отправил неизвестную команду.')
     await message.answer(ADMIN_TEXTS['admin_unknown_command'],
                          reply_markup=buttons_kb_admin)
-
-
+    
 @admin_router.message(StateFilter(default_state))
 async def other_type_handler(message: Message):
     """

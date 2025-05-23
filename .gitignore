@@ -8,6 +8,8 @@ venv/
 .history/
 __pycache__/
 
+alembic/versions/6c5049ddd86d_initial.py
+
 *.db
 *.sqlite
 *.sqlite3

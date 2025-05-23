@@ -12,9 +12,11 @@ from bot import scheduler, schedule_feedback_jobs
 from aiogram import Bot, Dispatcher
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from config import Config, load_config
+from handlers.super_admin_handlers import super_admin_router
 from handlers.admin_handlers import admin_router
 from handlers.common_handler import common_router
 from handlers.users_handlers import user_router
+from main_menu.super_admin_menu import set_super_admin_main_menu
 from middlewares import AccessMiddleware
 from globals import job_context
 from services.admin_service import set_first_pairing_date
@@ -23,10 +25,10 @@ from services.admin_service import set_first_pairing_date
 async def main():
     logger.info('Старт бота')
 
-    # Из переменной config можно получить переменные окружения в текущем файле.
+    # Из переменной config можно получить переменные окружения
     config: Config = load_config()
     group_tg_id = config.tg_bot.group_tg_id
-    admin_id = config.tg_bot.admin_tg_id
+    admins_list = config.tg_bot.admins_list
     google_sheet_id = config.g_sheet.sheet_id
 
     engine = create_async_engine(config.db.db_url, echo=False)
@@ -39,20 +41,27 @@ async def main():
     job_context.set_context(bot, dp, session_maker)
     dp.workflow_data.update({
         'group_tg_id': group_tg_id,
+        'admins_list': admins_list,
         'session_maker': session_maker,
-        'admin_id': admin_id,
         'google_sheet_id': google_sheet_id
     })
 
     dp.update.middleware(AccessMiddleware())
+    dp.include_router(super_admin_router)
     dp.include_router(admin_router)
     dp.include_router(user_router)
     dp.include_router(common_router)
 
-    #  На случай, если нужно будет запланировать все задачи с чистого листа.
-    scheduler.start()
-    scheduler.remove_all_jobs()
-    await set_first_pairing_date(datetime(2025, 5, 23, 14, 35))
+    dp.startup.register(set_super_admin_main_menu)
+
+    #  На случай, если нужно будет запланировать все задачи с чистого листа:
+    scheduler.start()  # Для прода закоментировать
+    scheduler.remove_all_jobs()  # Для прода закоментировать
+
+    # При первом запуске бота установить нужную дату и время первого
+    # формирования пар (время UTC):
+    await set_first_pairing_date(datetime(2025, 5, 24, 7, 00))
+
     await schedule_feedback_jobs(session_maker)
 
     await dp.start_polling(bot)
