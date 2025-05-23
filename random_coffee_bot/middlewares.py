@@ -47,8 +47,8 @@ class AccessMiddleware(BaseMiddleware):
 
         logger.debug('Апдейт из приватного чата. Проверяем админ ли это.')
         user = data['event_from_user']
-        admin_id = data.get('admin_id', 0)
-        if user.id == admin_id:
+        admins_list = data.get('admins_list', [])
+        if user.id in admins_list:
             logger.debug('Это админ. Апдейт передан в хэндлеры.')
             return await handler(event, data)
 
@@ -105,5 +105,5 @@ class AccessMiddleware(BaseMiddleware):
                                                   show_alert=True)
             return
         logger.debug(f'У юзера есть разрешение. Апдейт передан в хэндлеры. '
-                    f'Юзер: {data['event_from_user']}')
+                     f'Юзер: {data['event_from_user']}')
         return await handler(event, data)

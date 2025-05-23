@@ -13,8 +13,10 @@ services:
       - ./random_coffee_bot/.env
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
+    networks:
+      - internal
 
   app:
     build: .
@@ -26,14 +28,12 @@ services:
       - ./random_coffee_bot/.env
     depends_on:
       - db
+    networks:
+      - internal
 
-  adminer:
-    image: adminer
-    restart: always
-    ports:
-      - "8080:8080"
-    depends_on:
-      - db
+networks:
+  internal:
+    driver: bridge
 
 volumes:
   postgres_data:

@@ -19,7 +19,7 @@ from services.admin_service import (
 )
 from keyboards.admin_buttons import buttons_kb_admin
 from keyboards.user_buttons import create_active_user_keyboard
-from texts import ADMIN_TEXTS
+from texts import ADMIN_TEXTS, KEYBOARD_BUTTON_TEXTS
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,11 @@ async def process_user_id(message: Message, state: FSMContext):
     '''
     Хэндлер для ввода ID пользователя, которого хотим сделать админом.
     '''
+    if message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
+        await message.answer(ADMIN_TEXTS['prompt_for_user_id'])
+        return
+
     user_id = message.text
 
     if user_id.isdigit():
@@ -69,7 +74,7 @@ async def process_user_id(message: Message, state: FSMContext):
 
         if success:
             await message.answer(
-                f"Пользователь с ID {user_id} теперь администратор."
+                f"Пользователь с ID {user_id} теперь админ."
             )
             await message.bot.send_message(
                 user_id,
@@ -78,9 +83,9 @@ async def process_user_id(message: Message, state: FSMContext):
             )
             await state.clear()
         else:
-            await message.answer(f"Пользователь с ID {user_id} не найден.")
+            await message.answer(f"Пользователь с ID {user_id} не найден.  Проверьте и отправьте новый ID.\n\nЧтобы отменить действие, отправьте /cancel.")
     else:
-        logger.debug("Было введино не ID пользователя.")
+        logger.debug("Было введено не ID пользователя.")
         await message.answer(ADMIN_TEXTS['invalid_user_id_input'])
 
 
@@ -113,6 +118,11 @@ async def process_admin_id(message: Message, state: FSMContext):
     '''
     Ввод ID не главного админа которого хочешь удалить.
     '''
+    if message.text in KEYBOARD_BUTTON_TEXTS.values():
+        await message.answer(ADMIN_TEXTS['no_kb_buttons'])
+        await message.answer(ADMIN_TEXTS['prompt_for_admin_id'])
+        return
+
     user_id = message.text
     if user_id.isdigit():
         user_id = int(user_id)
@@ -129,19 +139,19 @@ async def process_admin_id(message: Message, state: FSMContext):
         if success:
             keyboard = create_active_user_keyboard()
             await message.answer(
-                f"Пользователь с ID {user_id} теперь обычный пользователь."
+                f"Пользователь с ID {user_id} теперь обычный пользователь в активном статусе и снова сможет принимать участие во встречах."
             )
             await message.bot.send_message(
                 user_id,
-                "Теперь ты обычный пользователь",
+                "Ты больше не являешься админом и снова можешь участвовать во встречах Random Coffee.",
                 reply_markup=keyboard)
             await state.clear()
 
         else:
-            await message.answer(f"Админестратор с ID {user_id} не найден.")
+            await message.answer(f"Админ с ID {user_id} не найден. Проверьте и отправьте новый ID.\n\nЧтобы отменить действие, отправьте /cancel.")
 
     else:
-        logger.debug("Было введено не ID админестратора.")
+        logger.debug("Было введено не ID администратора.")
         await message.answer(
             ADMIN_TEXTS['invalid_admin_id']
         )
@@ -155,14 +165,13 @@ async def admin_list_handler(message: Message):
     admins = await get_admin_list()
 
     if not admins:
-        await message.answer("Список администраторов пуст.")
+        await message.answer("Список админов пуст.")
         return
 
     admin_ids = [
-        f"ID: {admin.telegram_id}, "
-        f"Имя: {admin.first_name}, "
-        f"Фамилия: {admin.last_name}" for admin in admins
+        f"ID: {admin.telegram_id} - {admin.first_name} {admin.last_name or ''}"
+        for admin in admins
     ]
     admin_list_message = "\n".join(admin_ids)
 
-    await message.answer(f"Список администраторов:\n{admin_list_message}")
+    await message.answer(f"Список админов:\n{admin_list_message}")
