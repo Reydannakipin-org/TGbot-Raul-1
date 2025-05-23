@@ -16,17 +16,22 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from bot import get_next_pairing_date, auto_pairing_wrapper, force_reschedule_job
 from database.db import AsyncSessionLocal
-from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
-from keyboards.admin_buttons import (buttons_kb_admin,
-                                     generate_inline_manage,
-                                     generate_inline_confirm_change_interval,
-                                     generate_inline_confirm_permission_false,
-                                     generate_inline_confirm_permission_true,
-                                     generate_inline_interval_options,
-                                     generate_inline_notification_options,
-                                     generate_inline_user_list,
-                                     PageCallbackFactory,
-                                     UsersCallbackFactory)
+from filters.admin_filters import (
+    AdminMessageFilter,
+    AdminCallbackFilter
+)
+from keyboards.admin_buttons import (
+    buttons_kb_admin,
+    generate_inline_manage,
+    generate_inline_confirm_change_interval,
+    generate_inline_confirm_permission_false,
+    generate_inline_confirm_permission_true,
+    generate_inline_interval_options,
+    generate_inline_notification_options,
+    generate_inline_user_list,
+    PageCallbackFactory,
+    UsersCallbackFactory
+)
 from services import admin_service as adm
 from services.constants import DATE_FORMAT, DATE_TIME_FORMAT
 from services.user_service import get_user_by_telegram_id
@@ -42,6 +47,8 @@ logger = logging.getLogger(__name__)
 
 
 admin_router = Router()
+
+
 admin_router.message.filter(AdminMessageFilter())
 admin_router.callback_query.filter(AdminCallbackFilter())
 
@@ -92,16 +99,17 @@ async def process_find_user_by_telegram_id(message: Message,
     except SQLAlchemyError:
         logger.exception('Ошибка при работе с базой данных')
         await message.answer(ADMIN_TEXTS['db_error'])
-        return
-    else:
-        logger.debug(f'Пользователь {user_telegram_id} найден.')
-        data_text = adm.format_text_about_user(
-            ADMIN_TEXTS['finding_user_success'], user)
-        ikb_participant_management = generate_inline_manage(
-            user_telegram_id, user.has_permission)
-        await message.answer(data_text,
-                             reply_markup=ikb_participant_management)
-        await state.clear()
+
+    logger.debug(f'Пользователь {user_telegram_id} найден.')
+    data_text = adm.format_text_about_user(
+        ADMIN_TEXTS['finding_user_success'], user)
+    ikb_participant_management = generate_inline_manage(
+        user_telegram_id, user.has_permission)
+    await message.answer(
+        data_text,
+        reply_markup=ikb_participant_management
+    )
+    await state.clear()
 
 
 @admin_router.message(StateFilter(FSMAdminPanel.waiting_for_telegram_id),
@@ -187,7 +195,9 @@ async def show_user_details(callback: CallbackQuery,
             if user is None:
                 logger.info('Пользователя с полученным ID нет в БД.')
                 if isinstance(callback.message, Message):
-                    await callback.message.answer(ADMIN_TEXTS['finding_user_fail'])
+                    await callback.message.answer(
+                        ADMIN_TEXTS['finding_user_fail']
+                    )
                 return
             await adm.reset_user_pause_until(session, user)
     except SQLAlchemyError:
@@ -217,7 +227,9 @@ async def process_inline_cancel(callback: CallbackQuery):
 
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_by_telegram_id(session, int(user_telegram_id))
+            user = await get_user_by_telegram_id(
+                session, int(user_telegram_id)
+            )
     except SQLAlchemyError:
         logger.error('Ошибка при работе с базой данных')
         await callback.answer(ADMIN_TEXTS['db_error'])
@@ -460,7 +472,7 @@ async def process_check_date_for_pause(message: Message, state: FSMContext):
     которой юзера нужно поставить на паузу,
     и админ присылает дату в верном формате.
     """
-    parsed_date = datetime.strptime(message.text, DATE_FORMAT).date()  # type: ignore
+    parsed_date = datetime.strptime(message.text, DATE_FORMAT).date()
 
     today = date.today()
     if parsed_date < today:

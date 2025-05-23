@@ -325,8 +325,9 @@ async def export_pairs_to_gsheet(
         fb2 = fb_by_user.get(p.user2_id)
         u2_did_met, u2_comment = get_feedback_data(fb2)
         if p.user3_id:
-            u3_full_name = (f'{p.user3.first_name or ""} {p.user3.last_name or ""}'
-                            ).strip()
+            u3_full_name = (
+                f'{p.user3.first_name or ""} {p.user3.last_name or ""}'
+            ).strip()
             fb3 = fb_by_user.get(p.user3_id)
             u3_did_met, u3_comment = get_feedback_data(fb3)
         else:
@@ -472,10 +473,162 @@ async def set_first_pairing_date(recieved_date: datetime):
                 await session.commit()
 
             logger.info(f'Установленный интервал: {current_interval.value}\n'
-                        f'Записанная дата в БД: {current_interval.first_matching_date} (МСК-3)')
+                        f'Записанная дата в БД: {
+                            current_interval.first_matching_date
+                        } (МСК-3)'
+                        )
     except SQLAlchemyError as e:
         await session.rollback()
         logger.error(f'Ошибка при установке интервала и даты: {e}')
+
+
+async def set_user_as_admin(user_id: int) -> bool:
+    """
+    Устанавливает пользователя с заданным telegram_id в качестве
+    администратора.
+    Параметры:
+    user_id (int): Telegram ID пользователя, которого нужно сделать
+    администратором.
+    Возвращает:
+    bool: True, если пользователь успешно стал администратором; False в
+    противном случае.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            # Получаем пользователя по его telegram_id
+            result = await session.execute(
+                select(User).filter_by(telegram_id=user_id)
+            )
+            user = result.scalars().first()
+
+            if user:
+                user.is_admin = True
+                user.is_active = False
+
+                await session.commit()
+                return True
+            else:
+                logger.warning(f"Пользователь с ID {user_id} не найден.")
+                return False
+    except Exception as e:
+        logger.error(
+            f"Ошибка при установке администратора "
+            f"для пользователя {user_id}: {e}"
+        )
+        return False
+
+
+async def set_admin_as_user(user_id: int) -> bool:
+    """
+    Устанавливает пользователя с заданным telegram_id как обычного
+    пользователя (не администратора).
+
+    Параметры:
+    user_id (int): Telegram ID пользователя, которого нужно сделать обычным
+    пользователем.
+
+    Возвращает:
+    bool: True, если пользователь успешно стал обычным пользователем; False в
+    противном случае.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            # Получаем пользователя по его telegram_id
+            result = await session.execute(
+                select(User).filter_by(telegram_id=user_id)
+            )
+            user = result.scalars().first()
+
+            if user:
+                user.is_admin = False
+                user.is_active = True
+
+                await session.commit()
+                return True
+            else:
+                logger.warning(f"Пользователь с ID {user_id} не найден.")
+                return False
+    except Exception as e:
+        logger.error(
+            f"Ошибка при изменении статуса администратора для "
+            f"пользователя {user_id}: {e}"
+        )
+        return False
+
+
+async def is_user_admin(user_id: int) -> bool:
+    """
+    Проверяет, является ли пользователь с заданным telegram_id администратором.
+
+    Параметры:
+    user_id (int): Telegram ID пользователя, статус которого нужно проверить.
+
+    Возвращает:
+    bool: True, если пользователь является администратором; False в противном
+    случае.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User).filter_by(telegram_id=user_id)
+            )
+            user = result.scalars().first()
+
+            return user is not None and user.is_admin
+    except Exception as e:
+        logger.error(
+            f"Ошибка при проверке статуса администратора для "
+            f"пользователя {user_id}: {e}"
+        )
+        return False
+
+
+async def is_admin_user(user_id: int) -> bool:
+    """
+    Проверяет, является ли пользователь с заданным telegram_id обычным
+    пользователем (не администратором).
+
+    Параметры:
+    user_id (int): Telegram ID пользователя, статус которого нужно проверить.
+
+    Возвращает:
+    bool: True, если пользователь не является администратором; False в
+    противном случае.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User).filter_by(telegram_id=user_id)
+            )
+            user = result.scalars().first()
+
+            return user is not None and not user.is_admin
+    except Exception as e:
+        logger.error(
+            f"Ошибка при проверке статуса администратора для "
+            f"пользователя {user_id}: {e}"
+        )
+        return False
+
+
+async def get_admin_list() -> list:
+    """
+    Получает список всех администраторов.
+
+    Возвращает:
+    list: Список объектов пользователей, которые являются администраторами.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            # Получаем всех пользователей с флагом is_admin=True
+            result = await session.execute(
+                select(User).filter_by(is_admin=True)
+            )
+            admins = result.scalars().all()
+            return admins
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка администраторов: {e}")
+        return []
 
 
 async def notify_users_about_pairs(session: AsyncSession,

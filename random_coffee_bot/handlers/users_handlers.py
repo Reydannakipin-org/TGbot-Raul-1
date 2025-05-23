@@ -8,10 +8,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import select
 
 from apscheduler.events import EVENT_JOB_EXECUTED
-# Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
 from database.models import User
 from services.user_service import (
@@ -30,7 +28,6 @@ from services.user_service import (
     create_text_with_interval,
 )
 
-# Импорт фильтров и состояний
 from filters.admin_filters import AdminCallbackFilter, AdminMessageFilter
 from states.user_states import FSMUserForm
 
@@ -44,7 +41,6 @@ from keyboards.user_buttons import (
     yes_or_no_keyboard,
 )
 
-# Импорт текстов
 from texts import (
     TEXTS,
     KEYBOARD_BUTTON_TEXTS,
@@ -86,7 +82,8 @@ async def process_start_command(message: Message, state: FSMContext):
                                          message.from_user.first_name,
                                          message.from_user.last_name)
                 logger.debug(f'Пользователь добавлен в БД. '
-                             f'Имя {user.first_name}. Фамилия {user.last_name}')
+                             f'Имя {user.first_name}. Фамилия {user.last_name}'
+                             )
                 await message.answer(TEXTS['start'])
                 await message.answer(TEXTS['ask_first_name'])
                 await state.set_state(FSMUserForm.waiting_for_first_name)
@@ -303,7 +300,6 @@ async def process_deactivate_confirmation(callback_query: CallbackQuery):
                 USER_TEXTS['error_occurred'],
                 show_alert=True
             )
-
 
 
 @user_router.callback_query(lambda c: c.data.startswith("confirm_activate_"),
