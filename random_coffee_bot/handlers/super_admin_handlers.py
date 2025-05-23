@@ -84,7 +84,10 @@ async def process_user_id(message: Message, state: FSMContext):
         await message.answer(ADMIN_TEXTS['invalid_user_id_input'])
 
 
-@super_admin_router.message(Command('remove_admin'))
+@super_admin_router.message(
+    Command('remove_admin'),
+    StateFilter(default_state)
+)
 async def cmd_remove_admin(message: Message, state: FSMAdminPanel):
     '''
     Хэндлер для удаления не главного админа командой /remove_admin.
@@ -144,7 +147,7 @@ async def process_admin_id(message: Message, state: FSMContext):
         )
 
 
-@super_admin_router.message(Command("admin_list"))
+@super_admin_router.message(Command("admin_list"), StateFilter(default_state))
 async def admin_list_handler(message: Message):
     '''
     Хэндлер для команды /admin_list, выводит список всех администраторов.
