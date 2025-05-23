@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
 
+from apscheduler.events import EVENT_JOB_EXECUTED
 # Импорт базы данных и сервисов
 from database.db import AsyncSessionLocal
 from database.models import User

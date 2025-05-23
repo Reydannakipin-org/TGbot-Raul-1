@@ -1,6 +1,6 @@
 import logging
 import os
-
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED
@@ -48,11 +48,21 @@ async def feedback_dispatcher_wrapper():
 
 async def auto_pairing_wrapper():
     bot, dispatcher, session_maker = job_context.get_context()
+
+    async with session_maker() as session:
+        result = await session.execute(select(Setting))
+        setting_obj = result.scalar_one_or_none()
+
+        if setting_obj and setting_obj.auto_pairing_paused == 1:  # если в базе '1' (или True)
+            logger.info("🛑 Задача auto_pairing_weekly приостановлена (флаг в настройках).")
+            return  # не запускаем auto_pairing
+
     await auto_pairing(session_maker, bot)
 
 async def reload_scheduled_wrapper():
     _, _, session_maker = job_context.get_context()
     await reload_scheduled_jobs(session_maker)
+
 
 # ласт пара
 async def get_latest_pair_id_for_user(session: AsyncSession, user_id: int) -> int | None:
@@ -196,13 +206,13 @@ async def auto_pairing(session_maker, bot: Bot):
 
 
 # отображение для консоли его в проде не будет
-def show_next_runs(scheduler: AsyncIOScheduler):
-    logger.debug("🔔 Расписание ближайших запусков задач:")
+# def show_next_runs(scheduler: AsyncIOScheduler):
+#     logger.debug("🔔 Расписание ближайших запусков задач:")
 
-    for job in scheduler.get_jobs():
-        next_run_utc = job.next_run_time
-        next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
-        logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime(DATE_TIME_FORMAT) if next_run_msk else 'нет запланированного запуска'}")
+#     for job in scheduler.get_jobs():
+#         next_run_utc = job.next_run_time
+#         next_run_msk = next_run_utc.astimezone(MOSCOW_TZ)
+#         logger.debug(f"🛠 Задача '{job.id}' запустится в: {next_run_msk.strftime(DATE_TIME_FORMAT) if next_run_msk else 'нет запланированного запуска'}")
 
 
 def get_next_pairing_date() -> str | None:
@@ -227,8 +237,95 @@ def job_listener(event):
 
 
 async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing):
-    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(minutes=3)  # Минуты для тестирования!
+    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)
     return start_date_for_feedback_dispatcher
+
+
+# принудительное создание auto_pairing_weekly
+def force_reschedule_job(job_id, func, interval_minutes, session_maker, start_date=None):
+    tz = ZoneInfo("Europe/Moscow")
+    effective_start = (start_date or datetime.now(tz)).astimezone(tz)
+
+    # Удаляем задачу, если она уже есть
+    job = scheduler.get_job(job_id)
+    if job:
+        scheduler.remove_job(job_id)
+        print(f"🗑️ Старая задача '{job_id}' удалена")
+
+    scheduler.add_job(
+        func,
+        trigger=IntervalTrigger(days=interval_minutes, start_date=effective_start, timezone=tz),
+        id=job_id,
+        replace_existing=True,
+        misfire_grace_time=172800,
+    )
+    print(f"🆕 Новая задача '{job_id}' создана. Старт: {effective_start}")
+
+
+def schedule_or_reschedule(job_id, func, interval_minutes, session_maker, start_date=None):
+    job = scheduler.get_job(job_id)
+    tz = ZoneInfo("Europe/Moscow")
+    now = datetime.now(tz)
+    effective_start = (start_date or now).astimezone(tz)
+
+    if job:
+        current_job_interval = job.trigger.interval.days
+        #current_job_interval = job.trigger.interval.total_seconds() // 60
+        if int(current_job_interval) != interval_minutes:
+            next_run_time = getattr(job, "next_run_time", None)
+            if next_run_time:
+                new_start_date = next_run_time + timedelta(days=int(interval_minutes))
+            else:
+                new_start_date = effective_start
+
+            scheduler.modify_job(
+                job_id,
+                trigger=IntervalTrigger(days=interval_minutes, start_date=new_start_date, timezone=tz)
+            )
+            print(
+                f"🕒 '{job_id}' будет перезапущена с новым интервалом {interval_minutes} мин начиная с {new_start_date}")
+        else:
+            print(f"✅ '{job_id}' уже запланирована с интервалом {interval_minutes} мин.")
+    else:
+        scheduler.add_job(
+            func,
+            trigger=IntervalTrigger(days=interval_minutes, start_date=effective_start, timezone=tz),
+            id=job_id,
+            replace_existing=True,
+            misfire_grace_time=172800,
+        )
+        print(f"🆕 '{job_id}' создана. Старт: {effective_start}")
+
+    job = scheduler.get_job(job_id)
+    next_run_time = getattr(job, "next_run_time", None)
+
+    if job and next_run_time:
+        next_run_msk = next_run_time.astimezone(tz)
+        print(f"📅 Следующий запуск '{job_id}' в: {next_run_msk}")
+
+        if now > next_run_msk:
+            delta = (now - next_run_msk).total_seconds()
+            if delta <= 172800:
+                print(
+                    f"⚠️ Задача '{job_id}' пропущена (должна была быть в {next_run_msk}). Проверяем необходимость ручного запуска.")
+
+                async def maybe_run(session_maker):
+                    async with session_maker() as session:
+                        exists = await check_if_already_processed(session, job_id, next_run_msk)
+                        if exists:
+                            print(
+                                f"🛑 '{job_id}' уже была выполнена на момент {next_run_msk}. Пропускаем ручной запуск.")
+                            return
+                        print(f"▶️ Ручной запуск '{job_id}'...")
+                        if asyncio.iscoroutinefunction(func):
+                            await func()
+                        else:
+                            func()
+
+                    await maybe_run(session_maker)
+            else:
+                print(f"⏭️ Пропущен запуск '{job_id}' более чем на 2 дня. Пропускаем.")
+
 
 async def schedule_feedback_jobs(session_maker):
     global current_interval
@@ -238,64 +335,49 @@ async def schedule_feedback_jobs(session_maker):
         setting = result.scalar_one_or_none()
 
         interval_minutes = int(setting.value) if setting and setting.value else 2
-        start_date = setting.first_matching_date if setting and setting.first_matching_date else datetime.utcnow()
+        start_date = (
+            setting.first_matching_date
+            if setting and setting.first_matching_date
+            else datetime.now(ZoneInfo("Europe/Moscow"))
+        )
 
         pairing_day = interval_minutes * 7
-
 
     if not scheduler.running:
         scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED)
         scheduler.start()
 
     if current_interval != interval_minutes:
-        logger.info(f"🔁 Интервал изменился: {current_interval} ➡️ {interval_minutes}")
+        print(f"🔁 Интервал изменился: {current_interval} ➡️ {interval_minutes}")
         current_interval = interval_minutes
 
-    def schedule_or_reschedule(job_id, func, interval_days, start_date=None):
-        job = scheduler.get_job(job_id)
-        now = datetime.utcnow()
-
-        if job:
-            current_interval_from_job = job.trigger.interval.total_seconds() // 86400
-            if int(current_interval_from_job) == interval_days:
-                logger.debug(f"✅ '{job_id}' уже запланирована с тем же интервалом.")
-                return
-            else:
-                logger.info(
-                    f"♻️ Интервал '{job_id}' изменился с {current_interval_from_job} на {interval_days}. Перезапускаем...")
-                scheduler.remove_job(job_id)
-
-        effective_start = start_date or now
-
-        scheduler.add_job(
-            func,
-            trigger=IntervalTrigger(minutes=interval_days, start_date=effective_start), # Минуты для тестирования!
-            id=job_id,
-            replace_existing=True,
-            misfire_grace_time=172800,  # 2 дня
-        )
-        logger.debug(f"🆕 '{job_id}' пересоздана. Старт: {effective_start}")
-
-        # # 👉 Ручной запуск, если задача должна была уже отработать
-        # time_since_start = (now - effective_start).total_seconds()
-        # # interval_sec = interval_days * 86400  # секунды в дне
-        # interval_sec = interval_days * 60 # Таня - убрать строку, вернуть ту, что выше
-
-        # if 0 < time_since_start < 172800 and time_since_start % interval_sec < 60:
-        #     scheduler._create_executor("default").submit_job(
-        #         scheduler.get_job(job_id),
-        #         run_times=[now]
-        #     )
 
     start_date_for_auto_pairing = start_date
-    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, start_date=start_date_for_auto_pairing)
+    schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, pairing_day, session_maker,
+                           start_date=start_date_for_auto_pairing)
 
-    start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing)
-    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, start_date=start_date_for_feedback_dispatcher)
+    start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(
+        start_date_for_auto_pairing)
+    schedule_or_reschedule("feedback_dispatcher", feedback_dispatcher_wrapper, pairing_day, session_maker,
+                           start_date=start_date_for_feedback_dispatcher)
 
-    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, start_date=start_date_for_auto_pairing)
+    schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, session_maker,
+                           start_date=start_date_for_auto_pairing)
 
     show_next_runs(scheduler)
+
+
+# это исключение дублей
+async def check_if_already_processed(session, job_id: str, expected_run_time: datetime) -> bool:
+    lower = expected_run_time.replace(second=0, microsecond=0)
+    upper = lower + timedelta(minutes=1)
+    if job_id == "auto_pairing_weekly":
+        result = await session.execute(
+            select(Pair).where(Pair.paired_at.between(lower, upper))
+        )
+        return result.scalars().first() is not None
+
+    return False
 
 
 async def reload_scheduled_jobs(session_maker):
