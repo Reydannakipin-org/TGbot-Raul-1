@@ -234,8 +234,9 @@ async def export_users_to_gsheet(
     loop = asyncio.get_running_loop()
 
     rows: list[list[str]] = []
-    headers = ['telegram_id', 'Имя', 'Фамилия', 'Активен?', 'Есть разрешение?',
-               'Интервал', 'На паузе до', 'Дата присоединения',
+    headers = ['telegram_id', 'Имя', 'Фамилия', 'Состоит в группе?',
+               'Активен?', 'Есть разрешение?', 'Интервал',
+               'На паузе до', 'Дата присоединения',
                'Дата и время принятия политики обработки ПД']
     rows.append(headers)
 
@@ -243,6 +244,7 @@ async def export_users_to_gsheet(
         telegram_id = u.telegram_id
         first_name = u.first_name
         last_name = u.last_name if u.last_name else '-'
+        is_in_group = 'нет' if u.is_blocked else 'да'
         is_active = 'да' if u.is_active else 'нет'
         has_permission = 'да' if u.has_permission else 'нет'
         pairing_interval = (INTERVAL_TEXTS['default'] if not u.pairing_interval
@@ -253,9 +255,9 @@ async def export_users_to_gsheet(
         accept_policy = (u.joined_at.astimezone(MOSCOW_TZ)
                          .strftime(DATE_TIME_FORMAT))
 
-        rows.append([telegram_id, first_name, last_name, is_active,
-                     has_permission, pairing_interval, pause_until, joined_at,
-                     accept_policy])
+        rows.append([telegram_id, first_name, last_name, is_in_group,
+                     is_active, has_permission, pairing_interval, pause_until,
+                     joined_at, accept_policy])
     logger.info(f'Сформировано строк {len(rows)-1}')
 
     await loop.run_in_executor(None, worksheet.clear)

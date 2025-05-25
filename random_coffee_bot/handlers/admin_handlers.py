@@ -38,7 +38,7 @@ from services import admin_service as adm
 from services.constants import DATE_FORMAT
 from services.user_service import get_user_by_telegram_id
 from states.admin_states import FSMAdminPanel
-from texts import ADMIN_TEXTS, KEYBOARD_BUTTON_TEXTS
+from texts import ADMIN_TEXTS, COMMANDS_TEXT, KEYBOARD_BUTTON_TEXTS
 
 from sqlalchemy import select
 from database.models import Setting
@@ -48,7 +48,6 @@ logger = logging.getLogger(__name__)
 
 
 admin_router = Router()
-
 
 admin_router.message.filter(AdminMessageFilter())
 admin_router.callback_query.filter(AdminCallbackFilter())
@@ -72,8 +71,8 @@ async def process_participant_management(message: Message, state: FSMContext):
     участниками". Запрашивает у админа Telegram ID юзера, для которого
     хочет внести изменения. Переводит в состояние ожидания ввода ID.
     """
-    await message.answer(ADMIN_TEXTS['ask_user_telegram_id'])
     await state.set_state(FSMAdminPanel.waiting_for_telegram_id)
+    await message.answer(ADMIN_TEXTS['ask_user_telegram_id'])
 
 
 @admin_router.message(StateFilter(FSMAdminPanel.waiting_for_telegram_id),
@@ -103,6 +102,15 @@ async def process_find_user_by_telegram_id(message: Message,
         return
     else:
         logger.debug(f'Пользователь {user_telegram_id} найден.')
+
+        if user.is_blocked:
+            await message.answer(
+                f'Пользователь {user.first_name} {user.last_name or ''} '
+                'не является участником группы. Он не участвует в Random '
+                'Coffee, а управление им недоступно.')
+            await state.clear()
+            return
+
         data_text = adm.format_text_about_user(
             ADMIN_TEXTS['finding_user_success'], user)
         ikb_participant_management = generate_inline_manage(
@@ -208,13 +216,19 @@ async def show_user_details(callback: CallbackQuery,
             await callback.message.answer(ADMIN_TEXTS['db_error'])
         return
 
-    data_text = adm.format_text_about_user(
-        ADMIN_TEXTS['finding_user_success'], user)
-    ikb_participant_management = generate_inline_manage(
-        user_telegram_id, user.has_permission)
-    if isinstance(callback.message, Message):
+    if user.is_blocked:
         await callback.message.edit_text(
-            data_text, reply_markup=ikb_participant_management)
+            f'Пользователь {user.first_name} {user.last_name or ''} '
+            'не является участником группы. Он не участвует в Random '
+            'Coffee, а управление им недоступно.')
+    else:
+        data_text = adm.format_text_about_user(
+            ADMIN_TEXTS['finding_user_success'], user)
+        ikb_participant_management = generate_inline_manage(
+            user_telegram_id, user.has_permission)
+        if isinstance(callback.message, Message):
+            await callback.message.edit_text(
+                data_text, reply_markup=ikb_participant_management)
     await callback.answer()
 
 
@@ -733,6 +747,10 @@ async def process_get_text_of_notification(message: Message,
         return
     elif message.text in KEYBOARD_BUTTON_TEXTS.values():
         await message.answer(ADMIN_TEXTS['no_kb_buttons'])
+        await message.answer(ADMIN_TEXTS['ask_text_for_notif'])
+        return
+    elif message.text in COMMANDS_TEXT.values():
+        await message.answer(ADMIN_TEXTS['no_commands'])
         await message.answer(ADMIN_TEXTS['ask_text_for_notif'])
         return
     else:
