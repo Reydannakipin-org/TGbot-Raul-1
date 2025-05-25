@@ -470,7 +470,6 @@ async def set_first_pairing_date(recieved_date: datetime):
                 await session.commit()
             elif (current_interval.first_matching_date and
                   current_interval.first_matching_date < recieved_date):
-            else:
                 current_interval.first_matching_date = recieved_date
                 await session.commit()
 
