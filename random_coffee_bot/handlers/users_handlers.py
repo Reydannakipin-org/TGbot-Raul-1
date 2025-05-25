@@ -599,7 +599,7 @@ async def text_random_coffee(message: Message):
     '''
     async with AsyncSessionLocal() as session:
         text = await create_text_random_coffee(session)
-        await message.answer(text)
+        await message.answer(text, parse_mode='HTML')
 
 
 @user_router.message(
@@ -664,6 +664,14 @@ async def photo_handler(message: Message, state: FSMContext):
 
     os.remove(destination)
     await state.clear()
+
+
+@user_router.message(Command('help'), StateFilter(default_state))
+async def proccess_comand_help(message: Message):
+    """
+    Хэндлер обрабатывает команду /help.
+    """
+    await message.answer(USER_TEXTS['command_help'], parse_mode='HTML')
 
 
 @user_router.message(F.text, StateFilter(default_state))
