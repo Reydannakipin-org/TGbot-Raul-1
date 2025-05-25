@@ -337,7 +337,7 @@ def upload_to_drive(file_path, file_name):
         ).execute()
         return file.get('id')
     except Exception as e:
-        print(f"Ошибка при загрузке файла: {e}")
+        logger.error(f"Ошибка при загрузке файла: {e}")
         return None
 
 

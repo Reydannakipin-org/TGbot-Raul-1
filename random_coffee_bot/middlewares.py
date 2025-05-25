@@ -3,7 +3,7 @@ from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.enums import ChatType
-from aiogram.types import ReplyKeyboardRemove, Update
+from aiogram.types import ChatMemberUpdated, ReplyKeyboardRemove, Update
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.db import AsyncSessionLocal
@@ -36,6 +36,10 @@ class AccessMiddleware(BaseMiddleware):
         data: Dict[str, Any]
     ) -> Any:
         logger.debug('Старт мидлвэер диспетчера. Получен апдейт.')
+
+        if event.chat_member:
+            return await handler(event, data)
+
         chat = None
         if event.message:
             chat = event.message.chat
@@ -61,7 +65,9 @@ class AccessMiddleware(BaseMiddleware):
             if member.status in ['left', 'kicked']:
                 logger.info('Юзера нет в группе. Отказ в доступе.')
                 if event.message:
-                    await event.message.answer(TEXTS['deny_access'])
+                    await event.message.answer(
+                        TEXTS['deny_access'],
+                        reply_markup=ReplyKeyboardRemove())
                 elif event.callback_query:
                     await event.callback_query.answer(TEXTS['deny_access'],
                                                       show_alert=True)

@@ -3,6 +3,7 @@ from aiogram import Router
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message
 from aiogram.fsm.state import default_state
+from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.context import FSMContext
 
 from filters.super_admin_filters import (
@@ -60,10 +61,10 @@ async def process_user_id(message: Message, state: FSMContext):
         await message.answer(ADMIN_TEXTS['prompt_for_user_id'])
         return
 
-    user_id = message.text
+    user_id_str = message.text
 
-    if user_id.isdigit():
-        user_id = int(user_id)
+    if isinstance(user_id_str, str) and user_id_str.isdigit():
+        user_id = int(user_id_str)
 
         if await is_user_admin(user_id):
             await message.answer(ADMIN_TEXTS['user_already_admin'])
@@ -76,6 +77,15 @@ async def process_user_id(message: Message, state: FSMContext):
             await message.answer(
                 f"Пользователь с ID {user_id} теперь админ."
             )
+
+            key = StorageKey(
+                user_id=user_id,
+                chat_id=user_id,
+                bot_id=message.bot.id
+            )
+            user_ctx = FSMContext(storage=state.storage, key=key)
+            await user_ctx.clear()
+
             await message.bot.send_message(
                 user_id,
                 ADMIN_TEXTS['now_admin_message'],
@@ -123,9 +133,9 @@ async def process_admin_id(message: Message, state: FSMContext):
         await message.answer(ADMIN_TEXTS['prompt_for_admin_id'])
         return
 
-    user_id = message.text
-    if user_id.isdigit():
-        user_id = int(user_id)
+    user_id_str = message.text
+    if isinstance(user_id_str, str) and user_id_str.isdigit():
+        user_id = int(user_id_str)
 
         if await is_admin_user(user_id):
             await message.answer(
@@ -141,6 +151,15 @@ async def process_admin_id(message: Message, state: FSMContext):
             await message.answer(
                 f"Пользователь с ID {user_id} теперь обычный пользователь в активном статусе и снова сможет принимать участие во встречах."
             )
+
+            key = StorageKey(
+                user_id=user_id,
+                chat_id=user_id,
+                bot_id=message.bot.id
+            )
+            user_ctx = FSMContext(storage=state.storage, key=key)
+            await user_ctx.clear()
+
             await message.bot.send_message(
                 user_id,
                 "Ты больше не являешься админом и снова можешь участвовать во встречах Random Coffee.",
