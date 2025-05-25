@@ -468,8 +468,8 @@ async def set_first_pairing_date(recieved_date: datetime):
                     first_matching_date=recieved_date)
                 session.add(current_interval)
                 await session.commit()
-            # elif (current_interval.first_matching_date and
-            #       current_interval.first_matching_date < recieved_date):
+            elif (current_interval.first_matching_date and
+                  current_interval.first_matching_date < recieved_date):
             else:
                 current_interval.first_matching_date = recieved_date
                 await session.commit()
