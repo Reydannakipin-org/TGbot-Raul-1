@@ -57,8 +57,8 @@ async def main():
     dp.startup.register(set_super_admin_main_menu)
 
     #  На случай, если нужно будет запланировать все задачи с чистого листа:
-    scheduler.start()  # Для прода закоментировать
-    scheduler.remove_all_jobs()  # Для прода закоментировать
+    # scheduler.start()  # Для прода закоментировать
+    # scheduler.remove_all_jobs()  # Для прода закоментировать
 
     # При первом запуске бота установить нужную дату и время первого
     # формирования пар (время UTC):
