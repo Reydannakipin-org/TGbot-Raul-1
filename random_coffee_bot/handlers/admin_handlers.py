@@ -902,6 +902,14 @@ async def process_cancel_pairing_off(callback: CallbackQuery):
     await callback.answer()
 
 
+@admin_router.message(Command('help'), StateFilter(default_state))
+async def proccess_comand_help(message: Message):
+    """
+    Хэндлер обрабатывает команду /help.
+    """
+    await message.answer(ADMIN_TEXTS['command_help_admin'], parse_mode='HTML')
+
+
 @admin_router.message(F.text, StateFilter(default_state))
 async def fallback_handler(message: Message):
     """

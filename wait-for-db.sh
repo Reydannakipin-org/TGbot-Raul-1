@@ -2,14 +2,13 @@
 set -e
 
 export PGPASSWORD="$POSTGRES_PASSWORD"
+export PGHOST="db"
+export PGPORT="5432"
+export PGUSER="$POSTGRES_USER"
+export PGDATABASE="$POSTGRES_DB"
 
-until pg_isready \
-  -h db \
-  -p 5432 \
-  -U "$POSTGRES_USER" \
-  > /dev/null 2>&1
-do
-  echo "Waiting for Postgres at db:5432 (user=$POSTGRES_USER)…"
+until pg_isready > /dev/null 2>&1; do
+  echo "Waiting for Postgres at $PGHOST:$PGPORT (db=$PGDATABASE)…"
   sleep 1
 done
 
