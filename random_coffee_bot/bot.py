@@ -231,7 +231,7 @@ def job_listener(event):
 
 
 async def schedule_feedback_dispatcher_for_auto_pairing(start_date_for_auto_pairing):
-    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(hours=3)  # Для прода изменить на days
+    start_date_for_feedback_dispatcher = start_date_for_auto_pairing - timedelta(days=3)  # Для прода должно стоять days
     return start_date_for_feedback_dispatcher
 
 
@@ -244,19 +244,19 @@ def schedule_or_reschedule(job_id, func, recieved_interval, session_maker,
 
     if job:
         # Для прода:
-        # current_job_interval = job.trigger.interval.days()
-        current_job_interval = job.trigger.interval.total_seconds() // 3600  # Для прода убрать строку (здесь часы)
+        current_job_interval = job.trigger.interval.days()
+        # current_job_interval = job.trigger.interval.total_seconds() // 3600  # Для тестирования часы
         if (int(current_job_interval) != recieved_interval or
                 job.misfire_grace_time != misfire_grace_time):
             next_run_time = getattr(job, "next_run_time", None)
             if next_run_time:
-                new_start_date = next_run_time + timedelta(hours=int(recieved_interval))  # Для прода изменить на days
+                new_start_date = next_run_time + timedelta(days=int(recieved_interval))  # Для прода должно стоять days
             else:
                 new_start_date = effective_start
 
             scheduler.modify_job(
                 job_id,
-                trigger=IntervalTrigger(hours=recieved_interval, start_date=new_start_date),  # Для прода изменить на days
+                trigger=IntervalTrigger(days=recieved_interval, start_date=new_start_date),  # Для прода должно стоять days
                 misfire_grace_time=misfire_grace_time
             )
             logger.info(
@@ -266,7 +266,7 @@ def schedule_or_reschedule(job_id, func, recieved_interval, session_maker,
     else:
         scheduler.add_job(
             func,
-            trigger=IntervalTrigger(hours=recieved_interval, start_date=effective_start),  # Для прода изменить на days
+            trigger=IntervalTrigger(days=recieved_interval, start_date=effective_start),  # Для прода должно стоять days
             id=job_id,
             replace_existing=True,
             misfire_grace_time=misfire_grace_time,
@@ -300,7 +300,7 @@ async def schedule_feedback_jobs(session_maker):
 
     start_date_for_auto_pairing = start_date
     schedule_or_reschedule("auto_pairing_weekly", auto_pairing_wrapper, interval_for_job, session_maker,
-                           start_date=start_date_for_auto_pairing, misfire_grace_time=7200)  # Для прода: misfire_grace_time=172800 (сейчас задано 2 часа)
+                           start_date=start_date_for_auto_pairing, misfire_grace_time=172800)  # Для прода: misfire_grace_time=172800 (для теста 7200 - 2 часа)
 
     start_date_for_feedback_dispatcher = await schedule_feedback_dispatcher_for_auto_pairing(
         start_date_for_auto_pairing)
@@ -308,7 +308,7 @@ async def schedule_feedback_jobs(session_maker):
                            start_date=start_date_for_feedback_dispatcher, misfire_grace_time=None)
 
     schedule_or_reschedule("reload_jobs_checker", reload_scheduled_wrapper, 1, session_maker,
-                           start_date=start_date_for_auto_pairing, misfire_grace_time=3600)  # Для прода: misfire_grace_time=86400 (сейчас задан 1 час)
+                           start_date=start_date_for_auto_pairing, misfire_grace_time=86400)  # Для прода: misfire_grace_time=86400 (для теста 3600 - 1 час)
 
     show_next_runs(scheduler)
 
