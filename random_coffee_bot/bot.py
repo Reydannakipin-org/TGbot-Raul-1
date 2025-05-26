@@ -243,9 +243,7 @@ def schedule_or_reschedule(job_id, func, recieved_interval, session_maker,
     effective_start = start_date or now
 
     if job:
-        # Для прода:
-        current_job_interval = job.trigger.interval.days()
-        # current_job_interval = job.trigger.interval.total_seconds() // 3600  # Для тестирования часы
+        current_job_interval = job.trigger.interval.total_seconds() // 86400  # Для тестирования в часах 3600
         if (int(current_job_interval) != recieved_interval or
                 job.misfire_grace_time != misfire_grace_time):
             next_run_time = getattr(job, "next_run_time", None)
